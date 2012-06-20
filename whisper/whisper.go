@@ -73,7 +73,7 @@ func ReadHeader(buf io.ReadSeeker) (header Header, err error) {
 }
 
 func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod uint32, sparse bool) (err error) {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0666)
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 
 	oldest := uint32(0)
 	for _, archive := range archives {
@@ -85,9 +85,9 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 
 	metadata := Metadata{
 		AggregationMethod: aggregationMethod,
-		XFilesFactor: xFilesFactor,
-		ArchiveCount: uint32(len(archives)),
-		MaxRetention: oldest,
+		XFilesFactor:      xFilesFactor,
+		ArchiveCount:      uint32(len(archives)),
+		MaxRetention:      oldest,
 	}
 	err = binary.Write(file, binary.BigEndian, metadata)
 	if err != nil {
@@ -108,7 +108,7 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 	}
 
 	if sparse {
-		file.Seek(int64(archiveOffsetPointer - headerSize - 1), 0)
+		file.Seek(int64(archiveOffsetPointer-headerSize-1), 0)
 		file.Write([]byte{0})
 	} else {
 		remaining := archiveOffsetPointer - headerSize
