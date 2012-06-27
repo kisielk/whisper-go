@@ -229,42 +229,34 @@ func (w Whisper) Update(point Point) (err error) {
 }
 
 func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveInfo) (result bool, err error) {
+	// The start of the lower resolution archive interval.
+	// Essentially a downsampling of the higher resolution timestamp.
 	lowerIntervalStart := timestamp - (timestamp % lower.SecondsPerPoint)
+
+	// The offset of the first point in the higher resolution data to be propagated down
 	higherFirstOffset, err := w.pointOffset(higher, lowerIntervalStart)
 	if err != nil {
 		return
 	}
 
-	numHigherPoints := lower.SecondsPerPoint - higher.SecondsPerPoint
-	higherSize := numHigherPoints * pointSize
+	// how many higher resolution points that go in to a lower resolution point
+	numHigherPoints := lower.SecondsPerPoint / higher.SecondsPerPoint
+
+	// The total size of the higher resolution points
+	higherPointsSize := numHigherPoints * pointSize
+
+	// The realtive offset of the first high res point
 	relativeFirstOffset := higherFirstOffset - higher.Offset
-	relativeLastOffset := (relativeFirstOffset + higherSize) % higher.Size()
+	// The relative offset of the last high res point
+	relativeLastOffset := (relativeFirstOffset + higherPointsSize) % higher.Size()
+
+    // The actual offset of the last high res point
 	higherLastOffset := relativeLastOffset + higher.Offset
 
-	var points []Point
-	if higherFirstOffset < higherLastOffset {
-		// The selection is in the middle of the archive. eg: --####---
-		points = make([]Point, (higherLastOffset-higherFirstOffset)/pointSize)
-		err = w.readPoints(higherFirstOffset, points)
-		if err != nil {
-			return
-		}
-	} else {
-		// The selection wraps over the end of the archive. eg: ##----###
-		numEndPoints := (higher.End() - higherFirstOffset) / pointSize
-		numBeginPoints := (higherLastOffset - higher.Offset) / pointSize
-		points = make([]Point, numBeginPoints+numEndPoints)
-
-		err = w.readPoints(higherFirstOffset, points[:numEndPoints])
-		if err != nil {
-			return
-		}
-		err = w.readPoints(higher.Offset, points[numEndPoints:])
-		if err != nil {
-			return
-		}
+	points, err := w.readPointsBetweenOffsets(higher, higherFirstOffset, higherLastOffset)
+	if err != nil {
+		return
 	}
-
 	neighborPoints := make([]Point, 0, len(points))
 
 	currentInterval := lowerIntervalStart
@@ -314,6 +306,35 @@ func (w Whisper) readPoint(offset uint32) (point Point, err error) {
 func (w Whisper) readPoints(offset uint32, points []Point) (err error) {
 	w.file.Seek(int64(offset), 0)
 	err = binary.Read(w.file, binary.BigEndian, points)
+	return
+}
+
+
+func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
+	archiveStart := archive.Offset
+	archiveEnd := archive.End()
+	if startOffset < endOffset {
+		// The selection is in the middle of the archive. eg: --####---
+		points = make([]Point, (endOffset-startOffset)/pointSize)
+		err = w.readPoints(startOffset, points)
+		if err != nil {
+			return
+		}
+	} else {
+		// The selection wraps over the end of the archive. eg: ##----###
+		numEndPoints := (archiveEnd - startOffset) / pointSize
+		numBeginPoints := (endOffset - archiveStart) / pointSize
+		points = make([]Point, numBeginPoints+numEndPoints)
+
+		err = w.readPoints(startOffset, points[:numEndPoints])
+		if err != nil {
+			return
+		}
+		err = w.readPoints(archiveStart, points[numEndPoints:])
+		if err != nil {
+			return
+		}
+	}
 	return
 }
 
