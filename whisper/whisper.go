@@ -39,7 +39,6 @@ type Header struct {
 
 type Archive []Point
 
-
 type Point struct {
 	Timestamp uint32
 	Value     float64
@@ -58,6 +57,7 @@ func init() {
 	archiveSize = uint32(binary.Size(Archive{}))
 }
 
+// Read the header of a whisper database
 func ReadHeader(buf io.ReadSeeker) (header Header, err error) {
 	currentPos, err := buf.Seek(0, 1)
 	if err != nil {
@@ -99,6 +99,7 @@ func ReadHeader(buf io.ReadSeeker) (header Header, err error) {
 	return
 }
 
+// Create a new whisper database at a given file path
 func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod uint32, sparse bool) (err error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 
@@ -172,6 +173,7 @@ func (w Whisper) Update(point Point) (err error) {
 		return
 	}
 
+	// Find the higher-precision archive that covers the timestamp
 	var lowerArchives []ArchiveInfo
 	var currentArchive ArchiveInfo
 	for i, currentArchive := range w.Header.Archives {
@@ -182,19 +184,14 @@ func (w Whisper) Update(point Point) (err error) {
 	}
 
 	point.Timestamp = point.Timestamp - (point.Timestamp % currentArchive.SecondsPerPoint)
-	_, err = w.file.Seek(int64(currentArchive.Offset), 0)
-	if err != nil {
-		return
-	}
-
-	var basePoint Point
-	err = binary.Read(w.file, binary.BigEndian, basePoint)
+	basePoint, err := w.readPoint(currentArchive.Offset)
 	if err != nil {
 		return
 	}
 
 	if basePoint.Timestamp == 0 {
-		basePoint, err = w.readPoint(currentArchive.Offset)
+		// This file's first update
+		err = w.writePoint(currentArchive.Offset, point)
 		if err != nil {
 			return
 		}
@@ -208,9 +205,9 @@ func (w Whisper) Update(point Point) (err error) {
 
 	higherArchive := currentArchive
 	var lowerArchive ArchiveInfo
-	for _, lowerArchive = range(lowerArchives) {
+	for _, lowerArchive = range lowerArchives {
 		result, e := w.propagate(point.Timestamp, higherArchive, lowerArchive)
-		if ! result {
+		if !result {
 			break
 		}
 		if e != nil {
@@ -221,13 +218,6 @@ func (w Whisper) Update(point Point) (err error) {
 	}
 
 	return
-}
-
-func pointOffset(archive ArchiveInfo, timestamp uint32, baseTimestamp uint32) uint32 {
-	timeDistance := timestamp - baseTimestamp
-	pointDistance := timeDistance / archive.SecondsPerPoint
-	byteDistance := pointDistance * pointSize
-	return archive.Offset + (byteDistance % archive.Size())
 }
 
 func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveInfo) (result bool, err error) {
@@ -251,11 +241,11 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 	relativeLastOffset := (relativeFirstOffset + higherSize) % higher.Size()
 	higherLastOffset := relativeLastOffset + higher.Offset
 
-	var higherPoints []Point
+	var points []Point
 	if higherFirstOffset < higherLastOffset {
 		// The selection is in the middle of the archive. eg: --####---
-		higherPoints = make([]Point, (higherLastOffset - higherFirstOffset) / pointSize)
-		err = w.readPoints(higherFirstOffset, higherPoints)
+		points = make([]Point, (higherLastOffset-higherFirstOffset)/pointSize)
+		err = w.readPoints(higherFirstOffset, points)
 		if err != nil {
 			return
 		}
@@ -263,36 +253,58 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 		// The selection wraps over the end of the archive. eg: ##----###
 		numEndPoints := (higher.End() - higherFirstOffset) / pointSize
 		numBeginPoints := (higherLastOffset - higher.Offset) / pointSize
-		higherPoints = make([]Point, numBeginPoints + numEndPoints)
+		points = make([]Point, numBeginPoints+numEndPoints)
 
-		err = w.readPoints(higherFirstOffset, higherPoints[:numEndPoints])
+		err = w.readPoints(higherFirstOffset, points[:numEndPoints])
 		if err != nil {
 			return
 		}
-		err = w.readPoints(higher.Offset, higherPoints[numEndPoints:])
+		err = w.readPoints(higher.Offset, points[numEndPoints:])
 		if err != nil {
 			return
 		}
 	}
 
+	neighborPoints := make([]Point, len(points))
+
+	currentInterval := lowerIntervalStart
+	for i := 0; i < len(points); i += 2 {
+		if points[i].Timestamp == currentInterval {
+			neighborPoints[i/2] = points[i+1]
+		}
+		currentInterval += higher.SecondsPerPoint
+	}
 
 	return
 }
 
-func (w Whisper) readPoint(offset uint32) (point Point, err error){
-	w.file.Seek(int64(offset), 0)
+// Read a single point from an offset in the database
+func (w Whisper) readPoint(offset uint32) (point Point, err error) {
+	_, err = w.file.Seek(int64(offset), 0)
+	if err != nil {
+		return
+	}
 	err = binary.Read(w.file, binary.BigEndian, point)
 	return
 }
 
+// Read a slice of points from an offset in the database
 func (w Whisper) readPoints(offset uint32, points []Point) (err error) {
 	w.file.Seek(int64(offset), 0)
 	err = binary.Read(w.file, binary.BigEndian, points)
 	return
 }
 
+// Write a point to an offset in the database
 func (w Whisper) writePoint(offset uint32, point Point) (err error) {
 	w.file.Seek(int64(offset), 0)
 	err = binary.Write(w.file, binary.BigEndian, point)
 	return
+}
+
+func pointOffset(archive ArchiveInfo, timestamp uint32, baseTimestamp uint32) uint32 {
+	timeDistance := timestamp - baseTimestamp
+	pointDistance := timeDistance / archive.SecondsPerPoint
+	byteDistance := pointDistance * pointSize
+	return archive.Offset + (byteDistance % archive.Size())
 }
