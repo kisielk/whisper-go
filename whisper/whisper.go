@@ -51,6 +51,21 @@ type Whisper struct {
 
 var pointSize, metadataSize, archiveSize uint32
 
+// Aggregation type using averaging
+const AGGREGATION_AVERAGE = 1
+
+// Aggregation type using sum
+const AGGREGATION_SUM = 2
+
+// Aggregation type using the last value
+const AGGREGATION_LAST = 3
+
+// Aggregation type using the maximum value
+const AGGREGATION_MAX = 4
+
+// Aggregation type using the minimum value
+const AGGREGATION_MIN = 5
+
 func init() {
 	pointSize = uint32(binary.Size(Point{}))
 	metadataSize = uint32(binary.Size(Metadata{}))
@@ -307,4 +322,37 @@ func pointOffset(archive ArchiveInfo, timestamp uint32, baseTimestamp uint32) ui
 	pointDistance := timeDistance / archive.SecondsPerPoint
 	byteDistance := pointDistance * pointSize
 	return archive.Offset + (byteDistance % archive.Size())
+}
+
+func aggregate(aggregationMethod int, points []Point) (point Point, err error) {
+	switch aggregationMethod {
+	case AGGREGATION_AVERAGE:
+		for _, p := range points {
+			point.Value += p.Value
+		}
+		point.Value /= float64(len(points))
+	case AGGREGATION_SUM:
+		for _, p := range points {
+			point.Value += p.Value
+		}
+	case AGGREGATION_LAST:
+		point.Value = points[len(points)-1].Value
+	case AGGREGATION_MAX:
+		point.Value = points[0].Value
+		for _, p := range points {
+			if p.Value > point.Value {
+				point.Value = p.Value
+			}
+		}
+	case AGGREGATION_MIN:
+		point.Value = points[0].Value
+		for _, p := range points {
+			if p.Value < point.Value {
+				point.Value = p.Value
+			}
+		}
+	default:
+		//TODO: Set err
+	}
+	return
 }
