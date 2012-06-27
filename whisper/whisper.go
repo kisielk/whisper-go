@@ -265,17 +265,39 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 		}
 	}
 
-	neighborPoints := make([]Point, len(points))
+	neighborPoints := make([]Point, 0, len(points))
 
 	currentInterval := lowerIntervalStart
 	for i := 0; i < len(points); i += 2 {
 		if points[i].Timestamp == currentInterval {
-			neighborPoints[i/2] = points[i+1]
+			neighborPoints = append(neighborPoints, points[i])
 		}
 		currentInterval += higher.SecondsPerPoint
 	}
 
-	return
+	knownPercent := float32(len(neighborPoints)) / float32(len(points)) < w.Header.Metadata.XFilesFactor 
+	if len(neighborPoints) == 0 || knownPercent {
+		// There's nothing to propagate
+		return false, nil
+	}
+
+	aggregatePoint, err := aggregate(w.Header.Metadata.AggregationMethod, neighborPoints)
+	if err != nil {
+		return
+	}
+	aggregatePoint.Timestamp = lowerIntervalStart
+	aggregateOffset, err := w.pointOffset(lower, aggregatePoint.Timestamp)
+	if err != nil {
+		return
+	}
+
+	err = w.writePoint(aggregateOffset, aggregatePoint)
+	if err != nil {
+		return
+	}
+
+	return true, nil
+
 }
 
 // Read a single point from an offset in the database
@@ -320,7 +342,7 @@ func (w Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint
 	return
 }
 
-func aggregate(aggregationMethod int, points []Point) (point Point, err error) {
+func aggregate(aggregationMethod uint32, points []Point) (point Point, err error) {
 	switch aggregationMethod {
 	case AGGREGATION_AVERAGE:
 		for _, p := range points {
