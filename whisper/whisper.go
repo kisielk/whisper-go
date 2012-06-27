@@ -198,29 +198,22 @@ func (w Whisper) Update(point Point) (err error) {
 		lowerArchives = w.Header.Archives[i+1:]
 	}
 
+	// Normalize the point's timestamp to the current archive's precision
 	point.Timestamp = point.Timestamp - (point.Timestamp % currentArchive.SecondsPerPoint)
-	basePoint, err := w.readPoint(currentArchive.Offset)
+
+	// Write the point
+	offset, err := w.pointOffset(currentArchive, point.Timestamp)
+	if err != nil {
+		return
+	}
+	err = w.writePoint(offset, point)
 	if err != nil {
 		return
 	}
 
-	if basePoint.Timestamp == 0 {
-		// This file's first update
-		err = w.writePoint(currentArchive.Offset, point)
-		if err != nil {
-			return
-		}
-	} else {
-		myOffset := pointOffset(currentArchive, point.Timestamp, basePoint.Timestamp)
-		err = w.writePoint(myOffset, point)
-		if err != nil {
-			return
-		}
-	}
-
+	// Propagate data down to all the lower resolution archives
 	higherArchive := currentArchive
-	var lowerArchive ArchiveInfo
-	for _, lowerArchive = range lowerArchives {
+	for _, lowerArchive := range lowerArchives {
 		result, e := w.propagate(point.Timestamp, higherArchive, lowerArchive)
 		if !result {
 			break
@@ -237,17 +230,9 @@ func (w Whisper) Update(point Point) (err error) {
 
 func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveInfo) (result bool, err error) {
 	lowerIntervalStart := timestamp - (timestamp % lower.SecondsPerPoint)
-
-	basePoint, err := w.readPoint(higher.Offset)
+	higherFirstOffset, err := w.pointOffset(higher, lowerIntervalStart)
 	if err != nil {
 		return
-	}
-
-	var higherFirstOffset uint32
-	if basePoint.Timestamp == 0 {
-		higherFirstOffset = higher.Offset
-	} else {
-		higherFirstOffset = pointOffset(higher, lowerIntervalStart, basePoint.Timestamp)
 	}
 
 	numHigherPoints := lower.SecondsPerPoint - higher.SecondsPerPoint
@@ -317,11 +302,22 @@ func (w Whisper) writePoint(offset uint32, point Point) (err error) {
 	return
 }
 
-func pointOffset(archive ArchiveInfo, timestamp uint32, baseTimestamp uint32) uint32 {
-	timeDistance := timestamp - baseTimestamp
-	pointDistance := timeDistance / archive.SecondsPerPoint
-	byteDistance := pointDistance * pointSize
-	return archive.Offset + (byteDistance % archive.Size())
+// Get the offset of a timestamp within an archive
+func (w Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint32, err error) {
+	basePoint, err := w.readPoint(0)
+	if err != nil {
+		return
+	}
+	if basePoint.Timestamp == 0 {
+		// The archive has never been written, this will be the new base point
+		offset = archive.Offset
+	} else {
+		timeDistance := timestamp - basePoint.Timestamp
+		pointDistance := timeDistance / archive.SecondsPerPoint
+		byteDistance := pointDistance * pointSize
+		offset = archive.Offset + (byteDistance % archive.Size())
+	}
+	return
 }
 
 func aggregate(aggregationMethod int, points []Point) (point Point, err error) {
