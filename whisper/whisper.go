@@ -2,8 +2,10 @@ package whisper
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -34,16 +36,22 @@ func (a ArchiveInfo) End() uint32 {
 	return a.Offset + a.Size()
 }
 
+type ArchiveInfos []*ArchiveInfo
+
+func (a ArchiveInfos) Len() int           { return len(a) }
+func (a ArchiveInfos) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ArchiveInfos) Less(i, j int) bool { return a[i].SecondsPerPoint < a[j].SecondsPerPoint }
+
 // The whisper database header, contains metadata
 type Header struct {
 	Metadata Metadata
-	Archives []ArchiveInfo
+	Archives ArchiveInfos
 }
 
 type Archive []Point
 
 type Point struct {
-	Timestamp uint32 // Timestamp in seconds past the epoch
+	Timestamp uint32  // Timestamp in seconds past the epoch
 	Value     float64 // Data point value
 }
 
@@ -105,7 +113,7 @@ func readHeader(buf io.ReadSeeker) (header Header, err error) {
 	header.Metadata = metadata
 
 	// Read archive info
-	archives := make([]ArchiveInfo, metadata.ArchiveCount)
+	archives := make(ArchiveInfos, metadata.ArchiveCount)
 	for i := uint32(0); i < metadata.ArchiveCount; i++ {
 		err = binary.Read(buf, binary.BigEndian, archives[i])
 		if err != nil {
@@ -117,8 +125,68 @@ func readHeader(buf io.ReadSeeker) (header Header, err error) {
 	return
 }
 
+/* 
+
+Validates a list of ArchiveInfos
+
+The list must:
+
+1. Have at least one ArchiveInfo
+
+2. No archive may be a duplicate of another.
+
+3. Higher precision archives' precision must evenly divide all lower precision archives' precision.
+
+4. Lower precision archives must cover larger time intervals than higher precision archives.
+
+5. Each archive must have at least enough points to consolidate to the next archive
+
+*/
+func ValidateArchiveList(archives ArchiveInfos) error {
+	//TODO: Better error messages for this function
+
+	sort.Sort(archives)
+
+	// 1.
+	if len(archives) == 0 {
+		return errors.New("archive list cannot have 0 length")
+	}
+
+	for i, archive := range archives {
+		if i == (len(archives) - 1) {
+			break
+		}
+
+		// 2.
+		nextArchive := archives[i+1]
+		if !(archive.SecondsPerPoint < nextArchive.SecondsPerPoint) {
+			return errors.New("No archive may be a duplicate of another")
+		}
+
+		// 3.
+		if nextArchive.SecondsPerPoint%archive.SecondsPerPoint != 0 {
+			return errors.New("Higher precision archives must evenly divide in to lower precision")
+		}
+
+		// 4.
+		nextRetention := nextArchive.Retention()
+		retention := archive.Retention()
+		if !(nextRetention > retention) {
+			return errors.New("Lower precision archives must cover a larger time interval than higher precision")
+		}
+
+		// 5.
+		if !(archive.Points >= (nextArchive.SecondsPerPoint / archive.SecondsPerPoint)) {
+			return errors.New("Each archive must be able to consolidate the next")
+		}
+
+	}
+	return nil
+
+}
+
 // Create a new whisper database at a given file path
-func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod uint32, sparse bool) (err error) {
+func Create(path string, archives ArchiveInfos, xFilesFactor float32, aggregationMethod uint32, sparse bool) (err error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 
 	oldest := uint32(0)
@@ -194,8 +262,8 @@ func (w Whisper) Update(point Point) (err error) {
 	}
 
 	// Find the higher-precision archive that covers the timestamp
-	var lowerArchives []ArchiveInfo
-	var currentArchive ArchiveInfo
+	var lowerArchives ArchiveInfos
+	var currentArchive *ArchiveInfo
 	for i, currentArchive := range w.Header.Archives {
 		if currentArchive.Retention() < diff {
 			continue
@@ -233,7 +301,7 @@ func (w Whisper) Update(point Point) (err error) {
 	return
 }
 
-func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveInfo) (result bool, err error) {
+func (w Whisper) propagate(timestamp uint32, higher *ArchiveInfo, lower *ArchiveInfo) (result bool, err error) {
 	// The start of the lower resolution archive interval.
 	// Essentially a downsampling of the higher resolution timestamp.
 	lowerIntervalStart := timestamp - (timestamp % lower.SecondsPerPoint)
@@ -297,6 +365,26 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 
 }
 
+/*
+
+Set the aggregation method for the database
+
+The value of aggregationMethod must be one of the AGGREGATION_* constants
+
+*/
+func (w Whisper) setAggregationMethod(aggregationMethod uint32) (err error) {
+	//TODO: Validate the value of aggregationMethod
+
+	w.Header.Metadata.AggregationMethod = aggregationMethod
+	_, err = w.file.Seek(0, 0)
+	if err != nil {
+		return
+	}
+
+	err = binary.Write(w.file, binary.BigEndian, w.Header.Metadata)
+	return
+}
+
 // Read a single point from an offset in the database
 func (w Whisper) readPoint(offset uint32) (point Point, err error) {
 	_, err = w.file.Seek(int64(offset), 0)
@@ -314,7 +402,7 @@ func (w Whisper) readPoints(offset uint32, points []Point) (err error) {
 	return
 }
 
-func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
+func (w Whisper) readPointsBetweenOffsets(archive *ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
 	archiveStart := archive.Offset
 	archiveEnd := archive.End()
 	if startOffset < endOffset {
@@ -350,7 +438,7 @@ func (w Whisper) writePoint(offset uint32, point Point) (err error) {
 }
 
 // Get the offset of a timestamp within an archive
-func (w Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint32, err error) {
+func (w Whisper) pointOffset(archive *ArchiveInfo, timestamp uint32) (offset uint32, err error) {
 	basePoint, err := w.readPoint(0)
 	if err != nil {
 		return
