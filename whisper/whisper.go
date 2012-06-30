@@ -72,20 +72,13 @@ type Whisper struct {
 
 var pointSize, metadataSize, archiveSize uint32
 
-// Aggregation type using averaging
-const AGGREGATION_AVERAGE = 1
-
-// Aggregation type using sum
-const AGGREGATION_SUM = 2
-
-// Aggregation type using the last value
-const AGGREGATION_LAST = 3
-
-// Aggregation type using the maximum value
-const AGGREGATION_MAX = 4
-
-// Aggregation type using the minimum value
-const AGGREGATION_MIN = 5
+const (
+	AGGREGATION_AVERAGE = 1 // Aggregation type using averaging
+	AGGREGATION_SUM     = 2 // Aggregation type using sum
+	AGGREGATION_LAST    = 3 // Aggregation type using the last value
+	AGGREGATION_MAX     = 4 // Aggregation type using the maximum value
+	AGGREGATION_MIN     = 5 // Aggregation type using the minimum value
+)
 
 func init() {
 	pointSize = uint32(binary.Size(Point{}))
@@ -359,19 +352,17 @@ func quantizeArchive(points Archive, resolution uint32) {
 	}
 }
 
-type stampedArchive struct {
-	timestamp uint32
-	points    Archive
-}
-
 func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err error) {
-	step := archiveInfo.SecondsPerPoint
-	quantizeArchive(points, step)
-
-	var previousTimestamp uint32
-	var archiveStart uint32
+	type stampedArchive struct {
+		timestamp uint32
+		points    Archive
+	}
 	var archives []stampedArchive
 	var currentPoints Archive
+	var previousTimestamp, archiveStart uint32
+
+	step := archiveInfo.SecondsPerPoint
+	quantizeArchive(points, step)
 
 	for _, point := range points {
 		if point.Timestamp == previousTimestamp {
@@ -490,17 +481,18 @@ func (w Whisper) setAggregationMethod(aggregationMethod uint32) (err error) {
 
 // Read a single point from an offset in the database
 func (w Whisper) readPoint(offset uint32) (point Point, err error) {
-	_, err = w.file.Seek(int64(offset), 0)
-	if err != nil {
-		return
-	}
-	err = binary.Read(w.file, binary.BigEndian, point)
+	points := make([]Point, 1)
+	err = w.readPoints(offset, points)
+	point = points[0]
 	return
 }
 
 // Read a slice of points from an offset in the database
 func (w Whisper) readPoints(offset uint32, points []Point) (err error) {
-	w.file.Seek(int64(offset), 0)
+	_, err = w.file.Seek(int64(offset), 0)
+	if err != nil {
+		return
+	}
 	err = binary.Read(w.file, binary.BigEndian, points)
 	return
 }
@@ -586,7 +578,7 @@ func aggregate(aggregationMethod uint32, points []Point) (point Point, err error
 			}
 		}
 	default:
-		//TODO: Set err
+		err = errors.New("unknown aggregation function")
 	}
 	return
 }
