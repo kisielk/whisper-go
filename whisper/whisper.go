@@ -36,7 +36,7 @@ func (a ArchiveInfo) End() uint32 {
 	return a.Offset + a.Size()
 }
 
-type ArchiveInfos []*ArchiveInfo
+type ArchiveInfos []ArchiveInfo
 
 func (a ArchiveInfos) Len() int           { return len(a) }
 func (a ArchiveInfos) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -49,6 +49,16 @@ type Header struct {
 }
 
 type Archive []Point
+
+func (a Archive) Len() int           { return len(a) }
+func (a Archive) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a Archive) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
+
+type ReverseArchive struct {
+	Archive
+}
+
+func (r ReverseArchive) Less(i, j int) bool { return r.Archive.Less(j, i) }
 
 type Point struct {
 	Timestamp uint32  // Timestamp in seconds past the epoch
@@ -263,7 +273,7 @@ func (w Whisper) Update(point Point) (err error) {
 
 	// Find the higher-precision archive that covers the timestamp
 	var lowerArchives ArchiveInfos
-	var currentArchive *ArchiveInfo
+	var currentArchive ArchiveInfo
 	for i, currentArchive := range w.Header.Archives {
 		if currentArchive.Retention() < diff {
 			continue
@@ -301,7 +311,100 @@ func (w Whisper) Update(point Point) (err error) {
 	return
 }
 
-func (w Whisper) propagate(timestamp uint32, higher *ArchiveInfo, lower *ArchiveInfo) (result bool, err error) {
+// Write a series of datapoints to the whisper database
+func (w Whisper) UpdateMany(points []Point) (err error) {
+	now := uint32(time.Now().Unix())
+
+	archiveIndex := 0
+	var currentArchive *ArchiveInfo
+	currentArchive = &w.Header.Archives[archiveIndex]
+	var currentPoints Archive
+
+PointLoop:
+	for _, point := range points {
+		age := now - point.Timestamp
+
+		for currentArchive.Retention() < age {
+			if len(currentPoints) > 0 {
+				sort.Sort(ReverseArchive{currentPoints})
+				w.archiveUpdateMany(*currentArchive, currentPoints)
+				currentPoints = currentPoints[:0]
+			}
+
+			archiveIndex += 1
+			if archiveIndex < len(w.Header.Archives) {
+				currentArchive = &w.Header.Archives[archiveIndex]
+			} else {
+				// Drop remaining points that don't fit in the db
+				currentArchive = nil
+				break PointLoop
+			}
+
+		}
+
+		currentPoints = append(currentPoints, point)
+	}
+
+	if currentArchive != nil && len(currentPoints) > 0 {
+		sort.Sort(ReverseArchive{currentPoints})
+		w.archiveUpdateMany(*currentArchive, currentPoints)
+	}
+
+	return
+}
+
+func quantizeArchive(points Archive, resolution uint32) {
+	for _, point := range points {
+		point.Timestamp = point.Timestamp - (point.Timestamp % resolution)
+	}
+}
+
+type stampedArchive struct {
+	timestamp uint32
+	points    Archive
+}
+
+func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err error) {
+	step := archiveInfo.SecondsPerPoint
+	quantizeArchive(points, step)
+
+	var previousTimestamp uint32
+	var archiveStart uint32
+	var archives []stampedArchive
+	var currentPoints Archive
+
+	for _, point := range points {
+		if point.Timestamp == previousTimestamp {
+			// ignore values with duplicate timestamps
+			continue
+		}
+
+		if (previousTimestamp != 0) && (point.Timestamp != previousTimestamp+step) {
+			// the current point is not contiguous to the last, start a new series of points
+
+			// append the current archive to the archive list
+			archiveStart = previousTimestamp - (uint32(len(currentPoints)) * step)
+			archives = append(archives, stampedArchive{archiveStart, currentPoints})
+
+			// start a new archive
+			currentPoints = Archive{}
+		}
+
+		currentPoints = append(currentPoints, point)
+		previousTimestamp = point.Timestamp
+
+	}
+
+	if len(currentPoints) > 0 {
+		// If there are any more points remaining after the loop, make a new series for them as well
+		archiveStart = previousTimestamp - (uint32(len(currentPoints)) * step)
+		archives = append(archives, stampedArchive{archiveStart, currentPoints})
+	}
+
+	return
+}
+
+func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveInfo) (result bool, err error) {
 	// The start of the lower resolution archive interval.
 	// Essentially a downsampling of the higher resolution timestamp.
 	lowerIntervalStart := timestamp - (timestamp % lower.SecondsPerPoint)
@@ -402,7 +505,7 @@ func (w Whisper) readPoints(offset uint32, points []Point) (err error) {
 	return
 }
 
-func (w Whisper) readPointsBetweenOffsets(archive *ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
+func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
 	archiveStart := archive.Offset
 	archiveEnd := archive.End()
 	if startOffset < endOffset {
@@ -438,7 +541,7 @@ func (w Whisper) writePoint(offset uint32, point Point) (err error) {
 }
 
 // Get the offset of a timestamp within an archive
-func (w Whisper) pointOffset(archive *ArchiveInfo, timestamp uint32) (offset uint32, err error) {
+func (w Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint32, err error) {
 	basePoint, err := w.readPoint(0)
 	if err != nil {
 		return
