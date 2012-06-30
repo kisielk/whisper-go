@@ -354,8 +354,8 @@ PointLoop:
 }
 
 func quantizeArchive(points Archive, resolution uint32) {
-	for _, point := range points {
-		point.Timestamp = point.Timestamp - (point.Timestamp % resolution)
+	for i, point := range points {
+		points[i].Timestamp = point.Timestamp - (point.Timestamp % resolution)
 	}
 }
 
