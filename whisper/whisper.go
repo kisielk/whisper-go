@@ -3,9 +3,12 @@ package whisper
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -38,6 +41,7 @@ func (a ArchiveInfo) End() uint32 {
 
 type ArchiveInfos []ArchiveInfo
 
+// sort.Interface
 func (a ArchiveInfos) Len() int           { return len(a) }
 func (a ArchiveInfos) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ArchiveInfos) Less(i, j int) bool { return a[i].SecondsPerPoint < a[j].SecondsPerPoint }
@@ -50,14 +54,14 @@ type Header struct {
 
 type Archive []Point
 
+// sort.Interface
 func (a Archive) Len() int           { return len(a) }
 func (a Archive) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a Archive) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
 
-type ReverseArchive struct {
-	Archive
-}
+type ReverseArchive struct { Archive }
 
+// sort.Interface
 func (r ReverseArchive) Less(i, j int) bool { return r.Archive.Less(j, i) }
 
 type Point struct {
@@ -79,6 +83,8 @@ const (
 	AGGREGATION_MAX     = 4 // Aggregation type using the maximum value
 	AGGREGATION_MIN     = 5 // Aggregation type using the minimum value
 )
+
+var precisionRegexp = regexp.MustCompile("^(\\d+)([smhdwy]?)")
 
 func init() {
 	pointSize = uint32(binary.Size(Point{}))
@@ -392,6 +398,8 @@ func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err
 		archives = append(archives, stampedArchive{archiveStart, currentPoints})
 	}
 
+	
+
 	return
 }
 
@@ -580,5 +588,58 @@ func aggregate(aggregationMethod uint32, points []Point) (point Point, err error
 	default:
 		err = errors.New("unknown aggregation function")
 	}
+	return
+}
+
+func ParseArchiveInfo(archiveString string) (archive ArchiveInfo, err error) {
+	c := strings.Split(archiveString, ":")
+	if len(c) != 2 {
+		err = errors.New(fmt.Sprintf("Could not parse: %s", archiveString))
+		return
+	}
+
+	precision := c[0]
+	retention := c[1]
+
+	parsedPrecision := precisionRegexp.FindStringSubmatch(precision)
+	if parsedPrecision == nil {
+		err = errors.New(fmt.Sprintf("Invalid precision string: %s", precision))
+		return
+	}
+
+	secondsPerPoint, err := parseUint32(parsedPrecision[1])
+	if err != nil {
+		return
+	}
+
+	if parsedPrecision[2] != "" {
+		secondsPerPoint, err = expandUnits(secondsPerPoint, parsedPrecision[2])
+		if err != nil {
+			return
+		}
+	}
+
+	parsedPoints := precisionRegexp.FindStringSubmatch(retention)
+	if parsedPoints == nil {
+		err = errors.New(fmt.Sprintf("Invalid retention string: %s", precision))
+		return
+	}
+
+	points, err := parseUint32(parsedPoints[1])
+	if err != nil {
+		return
+	}
+
+	var retentionSeconds uint32
+	if parsedPoints[2] != "" {
+		retentionSeconds, err = expandUnits(points, parsedPoints[2])
+		if err != nil {
+			return
+		}
+		points = retentionSeconds / secondsPerPoint
+	}
+		
+
+	archive = ArchiveInfo{0, secondsPerPoint, points} 
 	return
 }

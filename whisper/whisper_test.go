@@ -48,3 +48,19 @@ func TestAggregate(t *testing.T) {
 	}
 }
 
+
+func TestParseArchiveInfo(t *testing.T) {
+	tests := map[string]ArchiveInfo{
+		"60:1440": ArchiveInfo{0, 60, 1440},	// 60 seconds per datapoint, 1440 datapoints = 1 day of retention
+		"15m:8": ArchiveInfo{0, 15 * 60, 8},	// 15 minutes per datapoint, 8 datapoints = 2 hours of retention
+		"1h:7d": ArchiveInfo{0, 3600, 168}, // 1 hour per datapoint, 7 days of retention
+		"12h:2y": ArchiveInfo{0, 43200, 1456}, 	// 12 hours per datapoint, 2 years of retention
+	}
+
+	for info, expected := range tests {
+		if a, err := ParseArchiveInfo(info); (a != expected) || (err != nil) {
+			t.Errorf("%s: %v != %v, %v", info, a, expected, err)
+		}
+	}
+
+}
