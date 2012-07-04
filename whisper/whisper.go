@@ -22,21 +22,24 @@ type Metadata struct {
 
 // Metadata about an archive within the database
 type ArchiveInfo struct {
-	Offset          uint32 // The offset of the archive within the database
+	offset          uint32 // The offset of the archive within the database
 	SecondsPerPoint uint32 // The number of seconds of elapsed time represented by a data point
 	Points          uint32 // The number of data points
 }
 
+// Returns the retention period of the archive in seconds
 func (a ArchiveInfo) Retention() uint32 {
 	return a.SecondsPerPoint * a.Points
 }
 
-func (a ArchiveInfo) Size() uint32 {
+// Calculates the sized of the archive in bytes
+func (a ArchiveInfo) size() uint32 {
 	return a.Points * pointSize
 }
 
-func (a ArchiveInfo) End() uint32 {
-	return a.Offset + a.Size()
+// Calculates byte offset of the last point in the archive
+func (a ArchiveInfo) end() uint32 {
+	return a.offset + a.size()
 }
 
 type bySecondsPerPoint []ArchiveInfo
@@ -221,7 +224,7 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 	archiveOffsetPointer := headerSize
 
 	for _, archive := range archives {
-		archive.Offset = archiveOffsetPointer
+		archive.offset = archiveOffsetPointer
 		err = binary.Write(file, binary.BigEndian, archive)
 		if err != nil {
 			return
@@ -421,12 +424,12 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 	higherPointsSize := numHigherPoints * pointSize
 
 	// The realtive offset of the first high res point
-	relativeFirstOffset := higherFirstOffset - higher.Offset
+	relativeFirstOffset := higherFirstOffset - higher.offset
 	// The relative offset of the last high res point
-	relativeLastOffset := (relativeFirstOffset + higherPointsSize) % higher.Size()
+	relativeLastOffset := (relativeFirstOffset + higherPointsSize) % higher.size()
 
 	// The actual offset of the last high res point
-	higherLastOffset := relativeLastOffset + higher.Offset
+	higherLastOffset := relativeLastOffset + higher.offset
 
 	points, err := w.readPointsBetweenOffsets(higher, higherFirstOffset, higherLastOffset)
 	if err != nil {
@@ -506,8 +509,8 @@ func (w Whisper) readPoints(offset uint32, points []Point) (err error) {
 }
 
 func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
-	archiveStart := archive.Offset
-	archiveEnd := archive.End()
+	archiveStart := archive.offset
+	archiveEnd := archive.end()
 	if startOffset < endOffset {
 		// The selection is in the middle of the archive. eg: --####---
 		points = make([]Point, (endOffset-startOffset)/pointSize)
@@ -548,12 +551,12 @@ func (w Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint
 	}
 	if basePoint.Timestamp == 0 {
 		// The archive has never been written, this will be the new base point
-		offset = archive.Offset
+		offset = archive.offset
 	} else {
 		timeDistance := timestamp - basePoint.Timestamp
 		pointDistance := timeDistance / archive.SecondsPerPoint
 		byteDistance := pointDistance * pointSize
-		offset = archive.Offset + (byteDistance % archive.Size())
+		offset = archive.offset + (byteDistance % archive.size())
 	}
 	return
 }
