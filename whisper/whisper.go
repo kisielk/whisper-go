@@ -62,7 +62,7 @@ func (a Archive) Len() int           { return len(a) }
 func (a Archive) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a Archive) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
 
-type reverseArchive struct { Archive }
+type reverseArchive struct{ Archive }
 
 // sort.Interface
 func (r reverseArchive) Less(i, j int) bool { return r.Archive.Less(j, i) }
@@ -283,18 +283,9 @@ func (w Whisper) Update(point Point) (err error) {
 		lowerArchives = w.Header.Archives[i+1:]
 	}
 
-	// Normalize the point's timestamp to the current archive's precision
+	// Normalize the point's timestamp to the current archive's precision and write the point
 	point.Timestamp = point.Timestamp - (point.Timestamp % currentArchive.SecondsPerPoint)
-
-	// Write the point
-	offset, err := w.pointOffset(currentArchive, point.Timestamp)
-	if err != nil {
-		return
-	}
-	err = w.writePoint(offset, point)
-	if err != nil {
-		return
-	}
+	err = w.writePoint(currentArchive, point)
 
 	// Propagate data down to all the lower resolution archives
 	higherArchive := currentArchive
@@ -355,10 +346,24 @@ PointLoop:
 	return
 }
 
-func quantizeArchive(points Archive, resolution uint32) {
-	for i, point := range points {
-		points[i].Timestamp = point.Timestamp - (point.Timestamp % resolution)
+// Fetch all points since a timestamp
+func (w Whisper) Fetch(from uint32) (points []Point, err error) {
+	//TODO: Implement
+	return
+}
+
+// Fetch all points between two timestamps
+func (w Whisper) FetchUntil(from, until uint32) (points []Point, err error) {
+	//TODO: Implement
+	return
+}
+
+func quantizeArchive(points Archive, resolution uint32) Archive {
+	result := Archive{}
+	for _, point := range points {
+		result = append(result, Point{point.Timestamp - (point.Timestamp % resolution), point.Value})
 	}
+	return result
 }
 
 func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err error) {
@@ -371,7 +376,7 @@ func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err
 	var previousTimestamp, archiveStart uint32
 
 	step := archiveInfo.SecondsPerPoint
-	quantizeArchive(points, step)
+	points = quantizeArchive(points, step)
 
 	for _, point := range points {
 		if point.Timestamp == previousTimestamp {
@@ -401,8 +406,40 @@ func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err
 		archives = append(archives, stampedArchive{archiveStart, currentPoints})
 	}
 
-	
+	for _, archive := range archives {
+		err = w.writePoints(archiveInfo, archive.points)
+		if err != nil {
+			return err
+		}
+	}
 
+	higher := archiveInfo
+
+PropagateLoop:
+	for _, info := range w.Header.Archives {
+		if info.SecondsPerPoint < archiveInfo.SecondsPerPoint {
+			continue
+		}
+
+		quantizedPoints := quantizeArchive(points, info.SecondsPerPoint)
+		lastPoint := Point{0,0}
+		for _, point := range quantizedPoints {
+			if point.Timestamp == lastPoint.Timestamp {
+				continue
+			}
+
+			propagateFurther, err := w.propagate(point.Timestamp, higher, info)
+			if err != nil {
+				return err
+			}
+			if ! propagateFurther {
+				break PropagateLoop
+			}
+
+			lastPoint = point
+		}
+		higher = info
+	}
 	return
 }
 
@@ -456,15 +493,8 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 		return
 	}
 	aggregatePoint.Timestamp = lowerIntervalStart
-	aggregateOffset, err := w.pointOffset(lower, aggregatePoint.Timestamp)
-	if err != nil {
-		return
-	}
 
-	err = w.writePoint(aggregateOffset, aggregatePoint)
-	if err != nil {
-		return
-	}
+	err = w.writePoint(lower, aggregatePoint)
 
 	return true, nil
 
@@ -477,7 +507,7 @@ Set the aggregation method for the database
 The value of aggregationMethod must be one of the AGGREGATION_* constants
 
 */
-func (w Whisper) setAggregationMethod(aggregationMethod uint32) (err error) {
+func (w Whisper) SetAggregationMethod(aggregationMethod uint32) (err error) {
 	//TODO: Validate the value of aggregationMethod
 
 	w.Header.Metadata.AggregationMethod = aggregationMethod
@@ -536,10 +566,57 @@ func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endO
 	return
 }
 
-// Write a point to an offset in the database
-func (w Whisper) writePoint(offset uint32, point Point) (err error) {
-	w.file.Seek(int64(offset), 0)
-	err = binary.Write(w.file, binary.BigEndian, point)
+// Write a point to an archive
+func (w Whisper) writePoint(archive ArchiveInfo, point Point) (err error) {
+	points := []Point{point}
+	err = w.writePoints(archive, points)
+	return
+}
+
+// Write a list of points to an archive in the order given
+// The offset is determined by the first point
+func (w Whisper) writePoints(archive ArchiveInfo, points []Point) (err error) {
+	nPoints := uint32(len(points))
+
+	// Sanity check
+	if nPoints > archive.Points {
+		return errors.New(fmt.Sprintf("archive can store at most %d points, %d supplied",
+			archive.Points, nPoints))
+	}
+
+	// Get the offset of the first point
+	offset, err := w.pointOffset(archive, points[0].Timestamp)
+	if err != nil {
+		return
+	}
+
+	_, err = w.file.Seek(int64(offset), 0)
+	if err != nil {
+		return
+	}
+
+	maxPointsFromOffset := (archive.end() - offset) / pointSize
+	if nPoints > maxPointsFromOffset {
+		// Points span the beginning and end of the archive, eg: ##----###
+		err = binary.Write(w.file, binary.BigEndian, points[:maxPointsFromOffset])
+		if err != nil {
+			return
+		}
+
+		_, err = w.file.Seek(int64(archive.Offset), 0)
+		if err != nil {
+			return
+		}
+
+		err = binary.Write(w.file, binary.BigEndian, points[maxPointsFromOffset:])
+		if err != nil {
+			return
+		}
+	} else {
+		// Points are in the middle of the archive, eg: --####---
+		binary.Write(w.file, binary.BigEndian, points)
+	}
+
 	return
 }
 
@@ -641,8 +718,7 @@ func ParseArchiveInfo(archiveString string) (archive ArchiveInfo, err error) {
 		}
 		points = retentionSeconds / secondsPerPoint
 	}
-		
 
-	archive = ArchiveInfo{0, secondsPerPoint, points} 
+	archive = ArchiveInfo{0, secondsPerPoint, points}
 	return
 }
