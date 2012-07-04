@@ -39,17 +39,17 @@ func (a ArchiveInfo) End() uint32 {
 	return a.Offset + a.Size()
 }
 
-type ArchiveInfos []ArchiveInfo
+type bySecondsPerPoint []ArchiveInfo
 
 // sort.Interface
-func (a ArchiveInfos) Len() int           { return len(a) }
-func (a ArchiveInfos) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ArchiveInfos) Less(i, j int) bool { return a[i].SecondsPerPoint < a[j].SecondsPerPoint }
+func (a bySecondsPerPoint) Len() int           { return len(a) }
+func (a bySecondsPerPoint) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a bySecondsPerPoint) Less(i, j int) bool { return a[i].SecondsPerPoint < a[j].SecondsPerPoint }
 
 // The whisper database header, contains metadata
 type Header struct {
 	Metadata Metadata
-	Archives ArchiveInfos
+	Archives []ArchiveInfo
 }
 
 type Archive []Point
@@ -59,10 +59,10 @@ func (a Archive) Len() int           { return len(a) }
 func (a Archive) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a Archive) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
 
-type ReverseArchive struct { Archive }
+type reverseArchive struct { Archive }
 
 // sort.Interface
-func (r ReverseArchive) Less(i, j int) bool { return r.Archive.Less(j, i) }
+func (r reverseArchive) Less(i, j int) bool { return r.Archive.Less(j, i) }
 
 type Point struct {
 	Timestamp uint32  // Timestamp in seconds past the epoch
@@ -122,7 +122,7 @@ func readHeader(buf io.ReadSeeker) (header Header, err error) {
 	header.Metadata = metadata
 
 	// Read archive info
-	archives := make(ArchiveInfos, metadata.ArchiveCount)
+	archives := make([]ArchiveInfo, metadata.ArchiveCount)
 	for i := uint32(0); i < metadata.ArchiveCount; i++ {
 		err = binary.Read(buf, binary.BigEndian, archives[i])
 		if err != nil {
@@ -151,10 +151,10 @@ The list must:
 5. Each archive must have at least enough points to consolidate to the next archive
 
 */
-func ValidateArchiveList(archives ArchiveInfos) error {
+func ValidateArchiveList(archives []ArchiveInfo) error {
 	//TODO: Better error messages for this function
 
-	sort.Sort(archives)
+	sort.Sort(bySecondsPerPoint(archives))
 
 	// 1.
 	if len(archives) == 0 {
@@ -195,7 +195,7 @@ func ValidateArchiveList(archives ArchiveInfos) error {
 }
 
 // Create a new whisper database at a given file path
-func Create(path string, archives ArchiveInfos, xFilesFactor float32, aggregationMethod uint32, sparse bool) (err error) {
+func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod uint32, sparse bool) (err error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 
 	oldest := uint32(0)
@@ -271,7 +271,7 @@ func (w Whisper) Update(point Point) (err error) {
 	}
 
 	// Find the higher-precision archive that covers the timestamp
-	var lowerArchives ArchiveInfos
+	var lowerArchives []ArchiveInfo
 	var currentArchive ArchiveInfo
 	for i, currentArchive := range w.Header.Archives {
 		if currentArchive.Retention() < diff {
@@ -325,7 +325,7 @@ PointLoop:
 
 		for currentArchive.Retention() < age {
 			if len(currentPoints) > 0 {
-				sort.Sort(ReverseArchive{currentPoints})
+				sort.Sort(reverseArchive{currentPoints})
 				w.archiveUpdateMany(*currentArchive, currentPoints)
 				currentPoints = currentPoints[:0]
 			}
@@ -345,7 +345,7 @@ PointLoop:
 	}
 
 	if currentArchive != nil && len(currentPoints) > 0 {
-		sort.Sort(ReverseArchive{currentPoints})
+		sort.Sort(reverseArchive{currentPoints})
 		w.archiveUpdateMany(*currentArchive, currentPoints)
 	}
 
