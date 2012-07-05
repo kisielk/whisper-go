@@ -79,12 +79,13 @@ type Whisper struct {
 
 var pointSize, metadataSize, archiveSize uint32
 
+// Valid aggregation methods
 const (
-	AGGREGATION_AVERAGE = 1 // Aggregation type using averaging
-	AGGREGATION_SUM     = 2 // Aggregation type using sum
-	AGGREGATION_LAST    = 3 // Aggregation type using the last value
-	AGGREGATION_MAX     = 4 // Aggregation type using the maximum value
-	AGGREGATION_MIN     = 5 // Aggregation type using the minimum value
+	AGGREGATION_AVERAGE = 1 // Aggregate using averaging
+	AGGREGATION_SUM     = 2 // Aggregate using sum
+	AGGREGATION_LAST    = 3 // Aggregate using the last value
+	AGGREGATION_MAX     = 4 // Aggregate using the maximum value
+	AGGREGATION_MIN     = 5 // Aggregate using the minimum value
 )
 
 var precisionRegexp = regexp.MustCompile("^(\\d+)([smhdwy]?)")
@@ -422,7 +423,7 @@ PropagateLoop:
 		}
 
 		quantizedPoints := quantizeArchive(points, info.SecondsPerPoint)
-		lastPoint := Point{0,0}
+		lastPoint := Point{0, 0}
 		for _, point := range quantizedPoints {
 			if point.Timestamp == lastPoint.Timestamp {
 				continue
@@ -432,7 +433,7 @@ PropagateLoop:
 			if err != nil {
 				return err
 			}
-			if ! propagateFurther {
+			if !propagateFurther {
 				break PropagateLoop
 			}
 
