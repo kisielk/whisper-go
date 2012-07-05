@@ -1,3 +1,8 @@
+/*
+
+Package whisper implements an interface to the whisper database format used by the Graphite project (https://github.com/graphite-project/)
+
+*/
 package whisper
 
 import (
@@ -12,7 +17,7 @@ import (
 	"time"
 )
 
-// General metadata about a whisper database
+// Metadata holds metadata that's common to an entire whisper database
 type Metadata struct {
 	AggregationMethod uint32  // Aggregation method used. See the AGGREGATION_* constants
 	MaxRetention      uint32  // The maximum retention period
@@ -20,7 +25,7 @@ type Metadata struct {
 	ArchiveCount      uint32  // The number of archives in the database
 }
 
-// Metadata about an archive within the database
+// ArchiveInfo holds metadata about a single archive within a whisper database
 type ArchiveInfo struct {
 	Offset          uint32 // The byte offset of the archive within the database
 	SecondsPerPoint uint32 // The number of seconds of elapsed time represented by a data point
@@ -32,7 +37,7 @@ func (a ArchiveInfo) Retention() uint32 {
 	return a.SecondsPerPoint * a.Points
 }
 
-// Calculates the sized of the archive in bytes
+// Calculates the size of the archive in bytes
 func (a ArchiveInfo) size() uint32 {
 	return a.Points * pointSize
 }
@@ -41,50 +46,6 @@ func (a ArchiveInfo) size() uint32 {
 func (a ArchiveInfo) end() uint32 {
 	return a.Offset + a.size()
 }
-
-type bySecondsPerPoint []ArchiveInfo
-
-// sort.Interface
-func (a bySecondsPerPoint) Len() int           { return len(a) }
-func (a bySecondsPerPoint) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a bySecondsPerPoint) Less(i, j int) bool { return a[i].SecondsPerPoint < a[j].SecondsPerPoint }
-
-// The whisper database header, contains metadata
-type Header struct {
-	Metadata Metadata
-	Archives []ArchiveInfo
-}
-
-// a list of points
-type archive []Point
-
-// sort.Interface
-func (a archive) Len() int           { return len(a) }
-func (a archive) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a archive) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
-
-type reverseArchive struct{ archive }
-
-// sort.Interface
-func (r reverseArchive) Less(i, j int) bool { return r.archive.Less(j, i) }
-
-type Point struct {
-	Timestamp uint32  // Timestamp in seconds past the epoch
-	Value     float64 // Data point value
-}
-
-type Interval struct {
-	FromTimestamp uint32 // Start of the interval in seconds
-	UntilTimestamp uint32 // End of the interval in seconds
-	Step uint32 // Step size in seconds
-}
-
-type Whisper struct {
-	Header Header
-	file   *os.File
-}
-
-var pointSize, metadataSize, archiveSize uint32
 
 // Valid aggregation methods
 const (
@@ -95,6 +56,59 @@ const (
 	AGGREGATION_MIN     = 5 // Aggregate using the minimum value
 )
 
+// Header contains all the metadata about a whisper database. 
+type Header struct {
+	Metadata Metadata      // General metadata about the database
+	Archives []ArchiveInfo // Information about each of the archives in the database, in order of precision
+}
+
+// A Point is a single datum stored in a whisper database.
+type Point struct {
+	Timestamp uint32  // Timestamp in seconds past the epoch
+	Value     float64 // Data point value
+}
+
+// Interval repsents a time interval with a step.
+type Interval struct {
+	FromTimestamp  uint32 // Start of the interval in seconds since the epoch
+	UntilTimestamp uint32 // End of the interval in seconds since the epoch
+	Step           uint32 // Step size in seconds
+}
+
+// Whisper represents a handle to a whisper database.
+type Whisper struct {
+	Header Header
+	file   *os.File
+}
+
+// Unexported members
+
+// type for sorting a list of ArchiveInfo by the SecondsPerPoint field
+type bySecondsPerPoint []ArchiveInfo
+
+// sort.Interface
+func (a bySecondsPerPoint) Len() int           { return len(a) }
+func (a bySecondsPerPoint) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a bySecondsPerPoint) Less(i, j int) bool { return a[i].SecondsPerPoint < a[j].SecondsPerPoint }
+
+// a list of points
+type archive []Point
+
+// sort.Interface
+func (a archive) Len() int           { return len(a) }
+func (a archive) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a archive) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
+
+// a type for reverse sorting of archives
+type reverseArchive struct{ archive }
+
+// sort.Interface
+func (r reverseArchive) Less(i, j int) bool { return r.archive.Less(j, i) }
+
+// some sizes used fo
+var pointSize, metadataSize, archiveSize uint32
+
+// a regular expression matching a precision string such as 120y
 var precisionRegexp = regexp.MustCompile("^(\\d+)([smhdwy]?)")
 
 func init() {
@@ -163,8 +177,6 @@ The list must:
 
 */
 func ValidateArchiveList(archives []ArchiveInfo) error {
-	//TODO: Better error messages for this function
-
 	sort.Sort(bySecondsPerPoint(archives))
 
 	// 1.
@@ -180,24 +192,24 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 		// 2.
 		nextArchive := archives[i+1]
 		if !(archive.SecondsPerPoint < nextArchive.SecondsPerPoint) {
-			return errors.New("No archive may be a duplicate of another")
+			return errors.New("no archive may be a duplicate of another")
 		}
 
 		// 3.
 		if nextArchive.SecondsPerPoint%archive.SecondsPerPoint != 0 {
-			return errors.New("Higher precision archives must evenly divide in to lower precision")
+			return errors.New("higher precision archives must evenly divide in to lower precision")
 		}
 
 		// 4.
 		nextRetention := nextArchive.Retention()
 		retention := archive.Retention()
 		if !(nextRetention > retention) {
-			return errors.New("Lower precision archives must cover a larger time interval than higher precision")
+			return errors.New("lower precision archives must cover a larger time interval than higher precision")
 		}
 
 		// 5.
 		if !(archive.Points >= (nextArchive.SecondsPerPoint / archive.SecondsPerPoint)) {
-			return errors.New("Each archive must be able to consolidate the next")
+			return errors.New("each archive must be able to consolidate the next")
 		}
 
 	}
@@ -402,18 +414,6 @@ func (w Whisper) FetchUntil(from, until uint32) (interval Interval, points []Poi
 	points, err = w.readPointsBetweenOffsets(archive, fromOffset, untilOffset)
 	interval = Interval{fromTimestamp, untilTimestamp, step}
 	return
-}
-
-func quantizeArchive(points archive, resolution uint32) archive {
-	result := archive{}
-	for _, point := range points {
-		result = append(result, Point{quantizeTimestamp(point.Timestamp, resolution), point.Value})
-	}
-	return result
-}
-
-func quantizeTimestamp(timestamp uint32, resolution uint32) (quantized uint32) {
-	return timestamp - (timestamp % resolution)
 }
 
 func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points archive) (err error) {
@@ -688,6 +688,84 @@ func (w Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint
 	return
 }
 
+/* 
+ParseArchiveInfo returns an ArchiveInfo represented by the string.
+
+The string must consist of two numbers, the precision and retention, separated by a colon (:).
+
+Both the precision and retention strings accept a unit suffix. Acceptable suffixes are: "s" for second,
+"m" for minute, "h" for hour, "d" for day, "w" for week, and "y" for year.
+
+The precision string specifies how large of a time interval is represented by a single point in the archive. 
+
+The retention string specifies how long points are kept in the archive. If no suffix is given for the retention
+it is taken to mean a number of points and not a duration.
+
+*/
+func ParseArchiveInfo(archiveString string) (a ArchiveInfo, err error) {
+	c := strings.Split(archiveString, ":")
+	if len(c) != 2 {
+		err = errors.New(fmt.Sprintf("could not parse: %s", archiveString))
+		return
+	}
+
+	precision := c[0]
+	retention := c[1]
+
+	parsedPrecision := precisionRegexp.FindStringSubmatch(precision)
+	if parsedPrecision == nil {
+		err = errors.New(fmt.Sprintf("invalid precision string: %s", precision))
+		return
+	}
+
+	secondsPerPoint, err := parseUint32(parsedPrecision[1])
+	if err != nil {
+		return
+	}
+
+	if parsedPrecision[2] != "" {
+		secondsPerPoint, err = expandUnits(secondsPerPoint, parsedPrecision[2])
+		if err != nil {
+			return
+		}
+	}
+
+	parsedPoints := precisionRegexp.FindStringSubmatch(retention)
+	if parsedPoints == nil {
+		err = errors.New(fmt.Sprintf("invalid retention string: %s", precision))
+		return
+	}
+
+	points, err := parseUint32(parsedPoints[1])
+	if err != nil {
+		return
+	}
+
+	var retentionSeconds uint32
+	if parsedPoints[2] != "" {
+		retentionSeconds, err = expandUnits(points, parsedPoints[2])
+		if err != nil {
+			return
+		}
+		points = retentionSeconds / secondsPerPoint
+	}
+
+	a = ArchiveInfo{0, secondsPerPoint, points}
+	return
+}
+
+func quantizeArchive(points archive, resolution uint32) archive {
+	result := archive{}
+	for _, point := range points {
+		result = append(result, Point{quantizeTimestamp(point.Timestamp, resolution), point.Value})
+	}
+	return result
+}
+
+func quantizeTimestamp(timestamp uint32, resolution uint32) (quantized uint32) {
+	return timestamp - (timestamp % resolution)
+}
+
 func aggregate(aggregationMethod uint32, points []Point) (point Point, err error) {
 	switch aggregationMethod {
 	case AGGREGATION_AVERAGE:
@@ -721,54 +799,3 @@ func aggregate(aggregationMethod uint32, points []Point) (point Point, err error
 	return
 }
 
-func ParseArchiveInfo(archiveString string) (archive ArchiveInfo, err error) {
-	c := strings.Split(archiveString, ":")
-	if len(c) != 2 {
-		err = errors.New(fmt.Sprintf("Could not parse: %s", archiveString))
-		return
-	}
-
-	precision := c[0]
-	retention := c[1]
-
-	parsedPrecision := precisionRegexp.FindStringSubmatch(precision)
-	if parsedPrecision == nil {
-		err = errors.New(fmt.Sprintf("Invalid precision string: %s", precision))
-		return
-	}
-
-	secondsPerPoint, err := parseUint32(parsedPrecision[1])
-	if err != nil {
-		return
-	}
-
-	if parsedPrecision[2] != "" {
-		secondsPerPoint, err = expandUnits(secondsPerPoint, parsedPrecision[2])
-		if err != nil {
-			return
-		}
-	}
-
-	parsedPoints := precisionRegexp.FindStringSubmatch(retention)
-	if parsedPoints == nil {
-		err = errors.New(fmt.Sprintf("Invalid retention string: %s", precision))
-		return
-	}
-
-	points, err := parseUint32(parsedPoints[1])
-	if err != nil {
-		return
-	}
-
-	var retentionSeconds uint32
-	if parsedPoints[2] != "" {
-		retentionSeconds, err = expandUnits(points, parsedPoints[2])
-		if err != nil {
-			return
-		}
-		points = retentionSeconds / secondsPerPoint
-	}
-
-	archive = ArchiveInfo{0, secondsPerPoint, points}
-	return
-}
