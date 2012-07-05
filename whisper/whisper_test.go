@@ -4,10 +4,9 @@ import (
 	"testing"
 )
 
-
 func TestQuantizeArchive(t *testing.T) {
-	points := Archive{Point{0,0}, Point{3,0}, Point{10,0}}
-	pointsOut := Archive{Point{0,0}, Point{2,0}, Point{10,0}}
+	points := Archive{Point{0, 0}, Point{3, 0}, Point{10, 0}}
+	pointsOut := Archive{Point{0, 0}, Point{2, 0}, Point{10, 0}}
 	quantizedPoints := quantizeArchive(points, 2)
 	for i := range quantizedPoints {
 		if quantizedPoints[i] != pointsOut[i] {
@@ -16,29 +15,47 @@ func TestQuantizeArchive(t *testing.T) {
 	}
 }
 
+func TestQuantizePoint(t *testing.T) {
+	var pointTests = []struct {
+		in         uint32
+		resolution uint32
+		out        uint32
+	}{
+		{0, 2, 0},
+		{3, 2, 2},
+	}
+
+	for i, tt := range pointTests {
+		q := quantizeTimestamp(tt.in, tt.resolution)
+		if q != tt.out {
+			t.Errorf("%d. quantizePoint(%q, %q) => %q, want %q", i, tt.in, tt.resolution, q, tt.out)
+		}
+	}
+}
+
 func TestAggregate(t *testing.T) {
-	points := Archive{Point{0,0}, Point{0,1}, Point{0,2}, Point{0,1}}
-	expected := Point{0,1}
+	points := Archive{Point{0, 0}, Point{0, 1}, Point{0, 2}, Point{0, 1}}
+	expected := Point{0, 1}
 	if p, err := aggregate(AGGREGATION_AVERAGE, points); (p != expected) || (err != nil) {
 		t.Errorf("Average failed to average to %v, got %v: %v", expected, p, err)
 	}
 
-	expected = Point{0,4}
+	expected = Point{0, 4}
 	if p, err := aggregate(AGGREGATION_SUM, points); (p != expected) || (err != nil) {
 		t.Errorf("Sum failed to aggregate to %v, got %v: %v", expected, p, err)
 	}
 
-	expected = Point{0,1}
+	expected = Point{0, 1}
 	if p, err := aggregate(AGGREGATION_LAST, points); (p != expected) || (err != nil) {
 		t.Errorf("Last failed to aggregate to %v, got %v: %v", expected, p, err)
 	}
 
-	expected = Point{0,2}
+	expected = Point{0, 2}
 	if p, err := aggregate(AGGREGATION_MAX, points); (p != expected) || (err != nil) {
 		t.Errorf("Max failed to aggregate to %v, got %v: %v", expected, p, err)
 	}
 
-	expected = Point{0,0}
+	expected = Point{0, 0}
 	if p, err := aggregate(AGGREGATION_MIN, points); (p != expected) || (err != nil) {
 		t.Errorf("Min failed to aggregate to %v, got %v: %v", expected, p, err)
 	}
@@ -48,13 +65,12 @@ func TestAggregate(t *testing.T) {
 	}
 }
 
-
 func TestParseArchiveInfo(t *testing.T) {
 	tests := map[string]ArchiveInfo{
-		"60:1440": ArchiveInfo{0, 60, 1440},	// 60 seconds per datapoint, 1440 datapoints = 1 day of retention
-		"15m:8": ArchiveInfo{0, 15 * 60, 8},	// 15 minutes per datapoint, 8 datapoints = 2 hours of retention
-		"1h:7d": ArchiveInfo{0, 3600, 168}, // 1 hour per datapoint, 7 days of retention
-		"12h:2y": ArchiveInfo{0, 43200, 1456}, 	// 12 hours per datapoint, 2 years of retention
+		"60:1440": ArchiveInfo{0, 60, 1440},    // 60 seconds per datapoint, 1440 datapoints = 1 day of retention
+		"15m:8":   ArchiveInfo{0, 15 * 60, 8},  // 15 minutes per datapoint, 8 datapoints = 2 hours of retention
+		"1h:7d":   ArchiveInfo{0, 3600, 168},   // 1 hour per datapoint, 7 days of retention
+		"12h:2y":  ArchiveInfo{0, 43200, 1456}, // 12 hours per datapoint, 2 years of retention
 	}
 
 	for info, expected := range tests {
@@ -64,4 +80,3 @@ func TestParseArchiveInfo(t *testing.T) {
 	}
 
 }
-
