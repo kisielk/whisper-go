@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/kisielk/whisper-go/whisper"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 	"strings"
@@ -32,7 +33,7 @@ func main() {
 
 	// Parse all the points
 	var points = make([]whisper.Point, len(args) - 1)
-	for _, p := range args[1:] {
+	for i, p := range args[1:] {
 		splitP := strings.Split(p, ":")
 
 		if len(splitP) != 2 {
@@ -59,8 +60,10 @@ func main() {
 			log.Fatalf("invalid value: %s", splitP[1])
 		}
 
-		points = append(points, whisper.Point{timestamp, value})
+		points[i] = whisper.Point{timestamp, value}
 	}
+
+	fmt.Printf("Updating with points: %v\n", points)
 
 	err = w.UpdateMany(points)
 	if err != nil {
