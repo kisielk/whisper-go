@@ -8,10 +8,10 @@ import (
 func TestQuantizeArchive(t *testing.T) {
 	points := Archive{Point{0,0}, Point{3,0}, Point{10,0}}
 	pointsOut := Archive{Point{0,0}, Point{2,0}, Point{10,0}}
-	quantizeArchive(points, 2)
-	for i := range points {
-		if points[i] != pointsOut[i] {
-			t.Errorf("%v != %v", points[i], pointsOut[i])
+	quantizedPoints := quantizeArchive(points, 2)
+	for i := range quantizedPoints {
+		if quantizedPoints[i] != pointsOut[i] {
+			t.Errorf("%v != %v", quantizedPoints[i], pointsOut[i])
 		}
 	}
 }
@@ -64,3 +64,4 @@ func TestParseArchiveInfo(t *testing.T) {
 	}
 
 }
+
