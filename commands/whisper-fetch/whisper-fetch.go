@@ -36,9 +36,9 @@ func main() {
 
 	interval, points, err := w.FetchUntil(fromTime, untilTime)
 
-	fmt.Printf("Values in interval %q", interval)
+	fmt.Printf("Values in interval %+v\n", interval)
 	for i, p := range points {
-		fmt.Printf("%d %q\n", i, p)
+		fmt.Printf("%d %v\n", i, p)
 	}
 	return
 }
