@@ -72,6 +72,12 @@ type Point struct {
 	Value     float64 // Data point value
 }
 
+type Interval struct {
+	FromTimestamp uint32 // Start of the interval in seconds
+	UntilTimestamp uint32 // End of the interval in seconds
+	Step uint32 // Step size in seconds
+}
+
 type Whisper struct {
 	Header Header
 	file   *os.File
@@ -348,23 +354,65 @@ PointLoop:
 }
 
 // Fetch all points since a timestamp
-func (w Whisper) Fetch(from uint32) (points []Point, err error) {
-	//TODO: Implement
-	return
+func (w Whisper) Fetch(from uint32) (interval Interval, points []Point, err error) {
+	now := uint32(time.Now().Unix())
+	return w.FetchUntil(from, now)
 }
 
 // Fetch all points between two timestamps
-func (w Whisper) FetchUntil(from, until uint32) (points []Point, err error) {
-	//TODO: Implement
+func (w Whisper) FetchUntil(from, until uint32) (interval Interval, points []Point, err error) {
+	now := uint32(time.Now().Unix())
+
+	// Tidy up the time ranges
+	oldest := now - w.Header.Metadata.MaxRetention
+	if from < oldest {
+		from = oldest
+	}
+	if from > until {
+		err = errors.New("from time is not less than until time")
+	}
+	if until > now {
+		until = now
+	}
+
+	// Find the archive with enough retention to get be holding our data
+	var archive ArchiveInfo
+	diff := now - from
+	for _, info := range w.Header.Archives {
+		if info.Retention() >= diff {
+			archive = info
+			break
+		}
+	}
+
+	step := archive.SecondsPerPoint
+	fromTimestamp := quantizeTimestamp(from, step) + step
+	fromOffset, err := w.pointOffset(archive, fromTimestamp)
+	if err != nil {
+		return
+	}
+
+	untilTimestamp := quantizeTimestamp(until, step) + step
+	untilOffset, err := w.pointOffset(archive, untilTimestamp)
+	if err != nil {
+		return
+	}
+
+	points, err = w.readPointsBetweenOffsets(archive, fromOffset, untilOffset)
+	interval = Interval{fromTimestamp, untilTimestamp, step}
 	return
 }
 
 func quantizeArchive(points Archive, resolution uint32) Archive {
 	result := Archive{}
 	for _, point := range points {
-		result = append(result, Point{point.Timestamp - (point.Timestamp % resolution), point.Value})
+		result = append(result, Point{quantizeTimestamp(point.Timestamp, resolution), point.Value})
 	}
 	return result
+}
+
+func quantizeTimestamp(timestamp uint32, resolution uint32) (quantized uint32) {
+	return timestamp - (timestamp % resolution)
 }
 
 func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err error) {
