@@ -55,17 +55,18 @@ type Header struct {
 	Archives []ArchiveInfo
 }
 
-type Archive []Point
+// a list of points
+type archive []Point
 
 // sort.Interface
-func (a Archive) Len() int           { return len(a) }
-func (a Archive) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a Archive) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
+func (a archive) Len() int           { return len(a) }
+func (a archive) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a archive) Less(i, j int) bool { return a[i].Timestamp < a[j].Timestamp }
 
-type reverseArchive struct{ Archive }
+type reverseArchive struct{ archive }
 
 // sort.Interface
-func (r reverseArchive) Less(i, j int) bool { return r.Archive.Less(j, i) }
+func (r reverseArchive) Less(i, j int) bool { return r.archive.Less(j, i) }
 
 type Point struct {
 	Timestamp uint32  // Timestamp in seconds past the epoch
@@ -99,7 +100,7 @@ var precisionRegexp = regexp.MustCompile("^(\\d+)([smhdwy]?)")
 func init() {
 	pointSize = uint32(binary.Size(Point{}))
 	metadataSize = uint32(binary.Size(Metadata{}))
-	archiveSize = uint32(binary.Size(Archive{}))
+	archiveSize = uint32(binary.Size(archive{}))
 }
 
 // Read the header of a whisper database
@@ -318,7 +319,7 @@ func (w Whisper) UpdateMany(points []Point) (err error) {
 	archiveIndex := 0
 	var currentArchive *ArchiveInfo
 	currentArchive = &w.Header.Archives[archiveIndex]
-	var currentPoints Archive
+	var currentPoints archive
 
 PointLoop:
 	for _, point := range points {
@@ -403,8 +404,8 @@ func (w Whisper) FetchUntil(from, until uint32) (interval Interval, points []Poi
 	return
 }
 
-func quantizeArchive(points Archive, resolution uint32) Archive {
-	result := Archive{}
+func quantizeArchive(points archive, resolution uint32) archive {
+	result := archive{}
 	for _, point := range points {
 		result = append(result, Point{quantizeTimestamp(point.Timestamp, resolution), point.Value})
 	}
@@ -415,13 +416,13 @@ func quantizeTimestamp(timestamp uint32, resolution uint32) (quantized uint32) {
 	return timestamp - (timestamp % resolution)
 }
 
-func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err error) {
+func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points archive) (err error) {
 	type stampedArchive struct {
 		timestamp uint32
-		points    Archive
+		points    archive
 	}
 	var archives []stampedArchive
-	var currentPoints Archive
+	var currentPoints archive
 	var previousTimestamp, archiveStart uint32
 
 	step := archiveInfo.SecondsPerPoint
@@ -441,7 +442,7 @@ func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points Archive) (err
 			archives = append(archives, stampedArchive{archiveStart, currentPoints})
 
 			// start a new archive
-			currentPoints = Archive{}
+			currentPoints = archive{}
 		}
 
 		currentPoints = append(currentPoints, point)

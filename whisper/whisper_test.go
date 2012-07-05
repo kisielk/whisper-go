@@ -5,8 +5,8 @@ import (
 )
 
 func TestQuantizeArchive(t *testing.T) {
-	points := Archive{Point{0, 0}, Point{3, 0}, Point{10, 0}}
-	pointsOut := Archive{Point{0, 0}, Point{2, 0}, Point{10, 0}}
+	points := archive{Point{0, 0}, Point{3, 0}, Point{10, 0}}
+	pointsOut := archive{Point{0, 0}, Point{2, 0}, Point{10, 0}}
 	quantizedPoints := quantizeArchive(points, 2)
 	for i := range quantizedPoints {
 		if quantizedPoints[i] != pointsOut[i] {
@@ -34,7 +34,7 @@ func TestQuantizePoint(t *testing.T) {
 }
 
 func TestAggregate(t *testing.T) {
-	points := Archive{Point{0, 0}, Point{0, 1}, Point{0, 2}, Point{0, 1}}
+	points := archive{Point{0, 0}, Point{0, 1}, Point{0, 2}, Point{0, 1}}
 	expected := Point{0, 1}
 	if p, err := aggregate(AGGREGATION_AVERAGE, points); (p != expected) || (err != nil) {
 		t.Errorf("Average failed to average to %v, got %v: %v", expected, p, err)
