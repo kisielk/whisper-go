@@ -50,5 +50,8 @@ func main() {
 		archives = append(archives, archive)
 	}
 
-	whisper.Create(path, archives, float32(xFilesFactor), aggregationMethod, false)
+	err := whisper.Create(path, archives, float32(xFilesFactor), aggregationMethod, false)
+	if err != nil {
+		log.Fatal(err)
+	}
 }

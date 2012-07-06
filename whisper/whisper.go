@@ -259,6 +259,9 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 // Create a new whisper database at a given file path
 func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod AggregationMethod, sparse bool) (err error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
+	if err != nil {
+		return err
+	}
 
 	oldest := uint32(0)
 	for _, archive := range archives {
