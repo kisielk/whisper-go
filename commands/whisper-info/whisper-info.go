@@ -28,6 +28,7 @@ func main() {
 	fmt.Printf("Maximum retention:\t%d\n", w.Header.Metadata.MaxRetention)
 	fmt.Printf("X-Files factor:\t\t%f\n", w.Header.Metadata.XFilesFactor)
 	fmt.Printf("Number of archives:\t%d\n", w.Header.Metadata.ArchiveCount)
+	fmt.Printf("Aggregation method:\t%s\n", w.Header.Metadata.AggregationMethod.String())
 	fmt.Printf("\n")
 
 	for i, archive := range w.Header.Archives {

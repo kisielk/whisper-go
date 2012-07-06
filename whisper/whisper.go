@@ -19,10 +19,10 @@ import (
 
 // Metadata holds metadata that's common to an entire whisper database
 type Metadata struct {
-	AggregationMethod uint32  // Aggregation method used. See the AGGREGATION_* constants
-	MaxRetention      uint32  // The maximum retention period
-	XFilesFactor      float32 // The minimum percentage of known values required to aggregate
-	ArchiveCount      uint32  // The number of archives in the database
+	AggregationMethod AggregationMethod // Aggregation method used. See the AGGREGATION_* constants
+	MaxRetention      uint32            // The maximum retention period
+	XFilesFactor      float32           // The minimum percentage of known values required to aggregate
+	ArchiveCount      uint32            // The number of archives in the database
 }
 
 // ArchiveInfo holds metadata about a single archive within a whisper database
@@ -47,14 +47,53 @@ func (a ArchiveInfo) end() uint32 {
 	return a.Offset + a.size()
 }
 
+type AggregationMethod uint32
+
 // Valid aggregation methods
 const (
-	AGGREGATION_AVERAGE = 1 // Aggregate using averaging
-	AGGREGATION_SUM     = 2 // Aggregate using sum
-	AGGREGATION_LAST    = 3 // Aggregate using the last value
-	AGGREGATION_MAX     = 4 // Aggregate using the maximum value
-	AGGREGATION_MIN     = 5 // Aggregate using the minimum value
+	AGGREGATION_UNKNOWN AggregationMethod = 0 // Unknown aggregation method
+	AGGREGATION_AVERAGE AggregationMethod = 1 // Aggregate using averaging
+	AGGREGATION_SUM     AggregationMethod = 2 // Aggregate using sum
+	AGGREGATION_LAST    AggregationMethod = 3 // Aggregate using the last value
+	AGGREGATION_MAX     AggregationMethod = 4 // Aggregate using the maximum value
+	AGGREGATION_MIN     AggregationMethod = 5 // Aggregate using the minimum value
 )
+
+func (a *AggregationMethod) String() (s string) {
+	switch *a {
+	case AGGREGATION_AVERAGE:
+		s = "average"
+	case AGGREGATION_SUM:
+		s = "sum"
+	case AGGREGATION_LAST:
+		s = "last"
+	case AGGREGATION_MIN:
+		s = "min"
+	case AGGREGATION_MAX:
+		s = "max"
+	default:
+		s = "unknown"
+	}
+	return
+}
+
+func (a *AggregationMethod) Set(s string) error {
+	switch s {
+	case "average":
+		*a = AGGREGATION_AVERAGE
+	case "sum":
+		*a = AGGREGATION_SUM
+	case "last":
+		*a = AGGREGATION_LAST
+	case "min":
+		*a = AGGREGATION_MIN
+	case "max":
+		*a = AGGREGATION_MAX
+	default:
+		*a = AGGREGATION_UNKNOWN
+	}
+	return nil
+}
 
 // Header contains all the metadata about a whisper database. 
 type Header struct {
@@ -218,7 +257,7 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 }
 
 // Create a new whisper database at a given file path
-func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod uint32, sparse bool) (err error) {
+func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod AggregationMethod, sparse bool) (err error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 
 	oldest := uint32(0)
@@ -550,14 +589,8 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 
 }
 
-/*
-
-Set the aggregation method for the database
-
-The value of aggregationMethod must be one of the AGGREGATION_* constants
-
-*/
-func (w Whisper) SetAggregationMethod(aggregationMethod uint32) (err error) {
+// Set the aggregation method for the database
+func (w Whisper) SetAggregationMethod(aggregationMethod AggregationMethod) (err error) {
 	//TODO: Validate the value of aggregationMethod
 
 	w.Header.Metadata.AggregationMethod = aggregationMethod
@@ -766,7 +799,7 @@ func quantizeTimestamp(timestamp uint32, resolution uint32) (quantized uint32) {
 	return timestamp - (timestamp % resolution)
 }
 
-func aggregate(aggregationMethod uint32, points []Point) (point Point, err error) {
+func aggregate(aggregationMethod AggregationMethod, points []Point) (point Point, err error) {
 	switch aggregationMethod {
 	case AGGREGATION_AVERAGE:
 		for _, p := range points {
@@ -798,4 +831,3 @@ func aggregate(aggregationMethod uint32, points []Point) (point Point, err error
 	}
 	return
 }
-
