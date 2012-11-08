@@ -95,7 +95,7 @@ func (a *AggregationMethod) Set(s string) error {
 	return nil
 }
 
-// Header contains all the metadata about a whisper database. 
+// Header contains all the metadata about a whisper database.
 type Header struct {
 	Metadata Metadata      // General metadata about the database
 	Archives []ArchiveInfo // Information about each of the archives in the database, in order of precision
@@ -198,7 +198,7 @@ func readHeader(buf io.ReadSeeker) (header Header, err error) {
 	return
 }
 
-/* 
+/*
 
 Validates a list of ArchiveInfos
 
@@ -339,7 +339,7 @@ func (w Whisper) Update(point Point) (err error) {
 	var lowerArchives []ArchiveInfo
 	var currentArchive ArchiveInfo
 	for i, ca := range w.Header.Archives {
-		if currentArchive.Retention() < diff {
+		if ca.Retention() < diff {
 			continue
 		}
 		lowerArchives = w.Header.Archives[i+1:]
@@ -725,7 +725,7 @@ func (w Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint
 	return
 }
 
-/* 
+/*
 ParseArchiveInfo returns an ArchiveInfo represented by the string.
 
 The string must consist of two numbers, the precision and retention, separated by a colon (:).
@@ -733,7 +733,7 @@ The string must consist of two numbers, the precision and retention, separated b
 Both the precision and retention strings accept a unit suffix. Acceptable suffixes are: "s" for second,
 "m" for minute, "h" for hour, "d" for day, "w" for week, and "y" for year.
 
-The precision string specifies how large of a time interval is represented by a single point in the archive. 
+The precision string specifies how large of a time interval is represented by a single point in the archive.
 
 The retention string specifies how long points are kept in the archive. If no suffix is given for the retention
 it is taken to mean a number of points and not a duration.
