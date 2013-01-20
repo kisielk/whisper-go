@@ -348,7 +348,7 @@ func (w Whisper) Update(point Point) (err error) {
 
 	// Normalize the point's timestamp to the current archive's precision and write the point
 	point.Timestamp = point.Timestamp - (point.Timestamp % currentArchive.SecondsPerPoint)
-	err = w.writePoint(currentArchive, point)
+	err = w.writePoints(currentArchive, point)
 
 	// Propagate data down to all the lower resolution archives
 	higherArchive := currentArchive
@@ -500,7 +500,7 @@ func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points archive) (err
 	}
 
 	for _, archive := range archives {
-		err = w.writePoints(archiveInfo, archive.points)
+		err = w.writePoints(archiveInfo, archive.points...)
 		if err != nil {
 			return err
 		}
@@ -587,7 +587,7 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 	}
 	aggregatePoint.Timestamp = lowerIntervalStart
 
-	err = w.writePoint(lower, aggregatePoint)
+	err = w.writePoints(lower, aggregatePoint)
 
 	return true, nil
 
@@ -653,16 +653,9 @@ func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endO
 	return
 }
 
-// Write a point to an archive
-func (w Whisper) writePoint(archive ArchiveInfo, point Point) (err error) {
-	points := []Point{point}
-	err = w.writePoints(archive, points)
-	return
-}
-
-// Write a list of points to an archive in the order given
+// Write a points to an archive in the order given
 // The offset is determined by the first point
-func (w Whisper) writePoints(archive ArchiveInfo, points []Point) (err error) {
+func (w Whisper) writePoints(archive ArchiveInfo, points ...Point) (err error) {
 	nPoints := uint32(len(points))
 
 	// Sanity check
