@@ -257,7 +257,7 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 }
 
 // Create a new whisper database at a given file path
-func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod AggregationMethod, sparse bool) (err error) {
+func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod AggregationMethod, sparse bool) error {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return err
@@ -277,9 +277,8 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 		ArchiveCount:      uint32(len(archives)),
 		MaxRetention:      oldest,
 	}
-	err = binary.Write(file, binary.BigEndian, metadata)
-	if err != nil {
-		return
+	if err := binary.Write(file, binary.BigEndian, metadata); err != nil {
+		return err
 	}
 
 	headerSize := metadataSize + (archiveSize * uint32(len(archives)))
@@ -287,9 +286,8 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 
 	for _, archive := range archives {
 		archive.Offset = archiveOffsetPointer
-		err = binary.Write(file, binary.BigEndian, archive)
-		if err != nil {
-			return
+		if err := binary.Write(file, binary.BigEndian, archive); err != nil {
+			return err
 		}
 		archiveOffsetPointer += archive.Points * pointSize
 	}
@@ -308,7 +306,7 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 		file.Write(buf[:remaining])
 	}
 
-	return
+	return nil
 }
 
 // Open a whisper database
@@ -594,17 +592,14 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 }
 
 // Set the aggregation method for the database
-func (w Whisper) SetAggregationMethod(aggregationMethod AggregationMethod) (err error) {
+func (w Whisper) SetAggregationMethod(aggregationMethod AggregationMethod) error {
 	//TODO: Validate the value of aggregationMethod
-
 	w.Header.Metadata.AggregationMethod = aggregationMethod
-	_, err = w.file.Seek(0, 0)
+	_, err := w.file.Seek(0, 0)
 	if err != nil {
-		return
+		return err
 	}
-
-	err = binary.Write(w.file, binary.BigEndian, w.Header.Metadata)
-	return
+	return binary.Write(w.file, binary.BigEndian, w.Header.Metadata)
 }
 
 // Read a single point from an offset in the database
@@ -616,13 +611,12 @@ func (w Whisper) readPoint(offset uint32) (point Point, err error) {
 }
 
 // Read a slice of points from an offset in the database
-func (w Whisper) readPoints(offset uint32, points []Point) (err error) {
-	_, err = w.file.Seek(int64(offset), 0)
+func (w Whisper) readPoints(offset uint32, points []Point) error {
+	_, err := w.file.Seek(int64(offset), 0)
 	if err != nil {
-		return
+		return err
 	}
-	err = binary.Read(w.file, binary.BigEndian, points)
-	return
+	return binary.Read(w.file, binary.BigEndian, points)
 }
 
 func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
