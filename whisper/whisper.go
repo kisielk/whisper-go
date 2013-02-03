@@ -257,10 +257,10 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 }
 
 // Create a new whisper database at a given file path
-func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod AggregationMethod, sparse bool) error {
+func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod AggregationMethod, sparse bool) (*Whisper, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	oldest := uint32(0)
@@ -278,7 +278,7 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 		MaxRetention:      oldest,
 	}
 	if err := binary.Write(file, binary.BigEndian, metadata); err != nil {
-		return err
+		return nil, err
 	}
 
 	headerSize := metadataSize + (archiveSize * uint32(len(archives)))
@@ -287,7 +287,7 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 	for _, archive := range archives {
 		archive.Offset = archiveOffsetPointer
 		if err := binary.Write(file, binary.BigEndian, archive); err != nil {
-			return err
+			return nil, err
 		}
 		archiveOffsetPointer += archive.Points * pointSize
 	}
@@ -306,22 +306,24 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 		file.Write(buf[:remaining])
 	}
 
-	return nil
+	return openWhisper(file)
+}
+
+func openWhisper(f *os.File) (*Whisper, error) {
+	header, err := readHeader(f)
+	if err != nil {
+		return nil, err
+	}
+	return &Whisper{Header: header, file: f}, nil
 }
 
 // Open a whisper database
-func Open(path string) (whisper Whisper, err error) {
+func Open(path string) (*Whisper, error) {
 	file, err := os.OpenFile(path, os.O_RDWR, 0666)
 	if err != nil {
-		return
+		return nil, err
 	}
-
-	header, err := readHeader(file)
-	if err != nil {
-		return
-	}
-	whisper = Whisper{Header: header, file: file}
-	return
+	return openWhisper(file)
 }
 
 // Write a single datapoint to the whisper database
@@ -591,15 +593,19 @@ func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveIn
 
 }
 
-// Set the aggregation method for the database
-func (w Whisper) SetAggregationMethod(aggregationMethod AggregationMethod) error {
+// SetAggregationMethod updates the aggregation method for the database
+func (w *Whisper) SetAggregationMethod(m AggregationMethod) error {
 	//TODO: Validate the value of aggregationMethod
-	w.Header.Metadata.AggregationMethod = aggregationMethod
-	_, err := w.file.Seek(0, 0)
-	if err != nil {
+	meta := w.Header.Metadata
+	meta.AggregationMethod = m
+	if _, err := w.file.Seek(0, 0); err != nil {
 		return err
 	}
-	return binary.Write(w.file, binary.BigEndian, w.Header.Metadata)
+	if err := binary.Write(w.file, binary.BigEndian, meta); err != nil {
+		return err
+	}
+	w.Header.Metadata = meta
+	return nil
 }
 
 // Read a single point from an offset in the database

@@ -1,6 +1,8 @@
 package whisper
 
 import (
+	"io/ioutil"
+	"os"
 	"testing"
 )
 
@@ -79,4 +81,23 @@ func TestParseArchiveInfo(t *testing.T) {
 		}
 	}
 
+}
+
+func TestWhisperAggregation(t *testing.T) {
+	f, err := ioutil.TempFile("", "whisper")
+	if err != nil {
+		panic(err)
+	}
+	f.Close()
+	os.Remove(f.Name())
+
+	w, err := Create(f.Name(), []ArchiveInfo{}, 0.5, AGGREGATION_MIN, false)
+	if err != nil {
+		panic(err)
+	}
+
+	w.SetAggregationMethod(AGGREGATION_MAX)
+	if method := w.Header.Metadata.AggregationMethod; method != AGGREGATION_MAX {
+		t.Fatalf("AggregationMethod: %d, want %d", method, AGGREGATION_MAX)
+	}
 }
