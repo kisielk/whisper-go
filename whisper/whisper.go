@@ -368,7 +368,7 @@ func (w Whisper) Update(point Point) error {
 }
 
 // Write a series of datapoints to the whisper database
-func (w Whisper) UpdateMany(points []Point) (err error) {
+func (w Whisper) UpdateMany(points []Point) error {
 	now := uint32(time.Now().Unix())
 
 	archiveIndex := 0
@@ -383,7 +383,9 @@ PointLoop:
 		for currentArchive.Retention() < age {
 			if len(currentPoints) > 0 {
 				sort.Sort(reverseArchive{currentPoints})
-				w.archiveUpdateMany(*currentArchive, currentPoints)
+				if err := w.archiveUpdateMany(*currentArchive, currentPoints); err != nil {
+					return err
+				}
 				currentPoints = currentPoints[:0]
 			}
 
@@ -403,10 +405,12 @@ PointLoop:
 
 	if currentArchive != nil && len(currentPoints) > 0 {
 		sort.Sort(reverseArchive{currentPoints})
-		w.archiveUpdateMany(*currentArchive, currentPoints)
+		if err := w.archiveUpdateMany(*currentArchive, currentPoints); err != nil {
+			return err
+		}
 	}
 
-	return
+	return nil
 }
 
 // Fetch all points since a timestamp
