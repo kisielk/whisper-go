@@ -114,11 +114,11 @@ func TestMaxRetention(t *testing.T) {
 		panic(err)
 	}
 
-	invalid := Point{uint32(time.Now().Add(-11 * time.Minute).Unix()), 0}
+	invalid := NewPoint(time.Now().Add(-11*time.Minute), 0)
 	if err = w.Update(invalid); err == nil {
 		t.Fatal("invalid point did not return an error")
 	}
-	valid := Point{uint32(time.Now().Add(-9 * time.Minute).Unix()), 0}
+	valid := NewPoint(time.Now().Add(-9*time.Minute), 0)
 	if err = w.Update(valid); err != nil {
 		t.Fatalf("valid point returned an error: %s", err)
 	}

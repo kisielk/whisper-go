@@ -101,10 +101,20 @@ type Header struct {
 	Archives []ArchiveInfo // Information about each of the archives in the database, in order of precision
 }
 
-// A Point is a single datum stored in a whisper database.
+// Point is a single datum stored in a whisper database.
 type Point struct {
 	Timestamp uint32  // Timestamp in seconds past the epoch
 	Value     float64 // Data point value
+}
+
+// NewPoint constructs a new Point at time t with value v.
+func NewPoint(t time.Time, v float64) Point {
+	return Point{uint32(t.Unix()), v}
+}
+
+// Time returns the time for the Point p
+func (p Point) Time() time.Time {
+	return time.Unix(int64(p.Timestamp), 0)
 }
 
 // Interval repsents a time interval with a step.
