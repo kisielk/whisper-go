@@ -659,49 +659,46 @@ func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endO
 
 // Write a points to an archive in the order given
 // The offset is determined by the first point
-func (w Whisper) writePoints(archive ArchiveInfo, points ...Point) (err error) {
+func (w Whisper) writePoints(archive ArchiveInfo, points ...Point) error {
 	nPoints := uint32(len(points))
 
 	// Sanity check
 	if nPoints > archive.Points {
-		return errors.New(fmt.Sprintf("archive can store at most %d points, %d supplied",
-			archive.Points, nPoints))
+		return fmt.Errorf("archive can store at most %d points, %d supplied", archive.Points, nPoints)
 	}
 
 	// Get the offset of the first point
 	offset, err := w.pointOffset(archive, points[0].Timestamp)
 	if err != nil {
-		return
+		return err
 	}
 
-	_, err = w.file.Seek(int64(offset), 0)
-	if err != nil {
-		return
+	if _, err := w.file.Seek(int64(offset), 0); err != nil {
+		return err
 	}
 
 	maxPointsFromOffset := (archive.end() - offset) / pointSize
 	if nPoints > maxPointsFromOffset {
 		// Points span the beginning and end of the archive, eg: ##----###
-		err = binary.Write(w.file, binary.BigEndian, points[:maxPointsFromOffset])
-		if err != nil {
-			return
+		if err := binary.Write(w.file, binary.BigEndian, points[:maxPointsFromOffset]); err != nil {
+			return err
 		}
 
-		_, err = w.file.Seek(int64(archive.Offset), 0)
-		if err != nil {
-			return
+		if _, err := w.file.Seek(int64(archive.Offset), 0); err != nil {
+			return err
 		}
 
-		err = binary.Write(w.file, binary.BigEndian, points[maxPointsFromOffset:])
-		if err != nil {
-			return
+		if err := binary.Write(w.file, binary.BigEndian, points[maxPointsFromOffset:]); err != nil {
+			return err
 		}
 	} else {
 		// Points are in the middle of the archive, eg: --####---
-		binary.Write(w.file, binary.BigEndian, points)
+		if err := binary.Write(w.file, binary.BigEndian, points); err != nil {
+			return err
+		}
 	}
 
-	return
+	return nil
 }
 
 // Get the offset of a timestamp within an archive
