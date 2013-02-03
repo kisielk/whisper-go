@@ -331,8 +331,7 @@ func (w Whisper) Update(point Point) (err error) {
 	now := uint32(time.Now().Unix())
 	diff := now - point.Timestamp
 	if !((diff < w.Header.Metadata.MaxRetention) && diff >= 0) {
-		// TODO: Return an error
-		return
+		return errors.New("point is older than the maximum retention period")
 	}
 
 	// Find the higher-precision archive that covers the timestamp

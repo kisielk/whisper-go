@@ -4,7 +4,18 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 )
+
+func tempFileName() string {
+	f, err := ioutil.TempFile("", "whisper")
+	if err != nil {
+		panic(err)
+	}
+	f.Close()
+	os.Remove(f.Name())
+	return f.Name()
+}
 
 func TestQuantizeArchive(t *testing.T) {
 	points := archive{Point{0, 0}, Point{3, 0}, Point{10, 0}}
@@ -84,14 +95,8 @@ func TestParseArchiveInfo(t *testing.T) {
 }
 
 func TestWhisperAggregation(t *testing.T) {
-	f, err := ioutil.TempFile("", "whisper")
-	if err != nil {
-		panic(err)
-	}
-	f.Close()
-	os.Remove(f.Name())
-
-	w, err := Create(f.Name(), []ArchiveInfo{}, 0.5, AGGREGATION_MIN, false)
+	filename := tempFileName()
+	w, err := Create(filename, []ArchiveInfo{}, 0.5, AGGREGATION_MIN, false)
 	if err != nil {
 		panic(err)
 	}
@@ -99,5 +104,22 @@ func TestWhisperAggregation(t *testing.T) {
 	w.SetAggregationMethod(AGGREGATION_MAX)
 	if method := w.Header.Metadata.AggregationMethod; method != AGGREGATION_MAX {
 		t.Fatalf("AggregationMethod: %d, want %d", method, AGGREGATION_MAX)
+	}
+}
+
+func TestMaxRetention(t *testing.T) {
+	filename := tempFileName()
+	w, err := Create(filename, []ArchiveInfo{ArchiveInfo{SecondsPerPoint: 60, Points: 10}}, 0.5, AGGREGATION_AVERAGE, false)
+	if err != nil {
+		panic(err)
+	}
+
+	invalid := Point{uint32(time.Now().Add(-11 * time.Minute).Unix()), 0}
+	if err = w.Update(invalid); err == nil {
+		t.Fatal("invalid point did not return an error")
+	}
+	valid := Point{uint32(time.Now().Add(-9 * time.Minute).Unix()), 0}
+	if err = w.Update(valid); err != nil {
+		t.Fatalf("valid point returned an error: %s", err)
 	}
 }
