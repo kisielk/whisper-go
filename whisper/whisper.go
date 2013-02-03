@@ -327,7 +327,7 @@ func Open(path string) (*Whisper, error) {
 }
 
 // Write a single datapoint to the whisper database
-func (w Whisper) Update(point Point) (err error) {
+func (w Whisper) Update(point Point) error {
 	now := uint32(time.Now().Unix())
 	diff := now - point.Timestamp
 	if !((diff < w.Header.Metadata.MaxRetention) && diff >= 0) {
@@ -347,23 +347,24 @@ func (w Whisper) Update(point Point) (err error) {
 
 	// Normalize the point's timestamp to the current archive's precision and write the point
 	point.Timestamp = point.Timestamp - (point.Timestamp % currentArchive.SecondsPerPoint)
-	err = w.writePoints(currentArchive, point)
+	if err := w.writePoints(currentArchive, point); err != nil {
+		return err
+	}
 
 	// Propagate data down to all the lower resolution archives
 	higherArchive := currentArchive
 	for _, lowerArchive := range lowerArchives {
-		result, e := w.propagate(point.Timestamp, higherArchive, lowerArchive)
+		result, err := w.propagate(point.Timestamp, higherArchive, lowerArchive)
+		if err != nil {
+			return err
+		}
 		if !result {
 			break
-		}
-		if e != nil {
-			err = e
-			return
 		}
 		higherArchive = lowerArchive
 	}
 
-	return
+	return nil
 }
 
 // Write a series of datapoints to the whisper database
