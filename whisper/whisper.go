@@ -733,11 +733,11 @@ The retention string specifies how long points are kept in the archive. If no su
 it is taken to mean a number of points and not a duration.
 
 */
-func ParseArchiveInfo(archiveString string) (a ArchiveInfo, err error) {
+func ParseArchiveInfo(archiveString string) (ArchiveInfo, error) {
+	a := ArchiveInfo{}
 	c := strings.Split(archiveString, ":")
 	if len(c) != 2 {
-		err = errors.New(fmt.Sprintf("could not parse: %s", archiveString))
-		return
+		return a, fmt.Errorf("could not parse: %s", archiveString)
 	}
 
 	precision := c[0]
@@ -745,44 +745,42 @@ func ParseArchiveInfo(archiveString string) (a ArchiveInfo, err error) {
 
 	parsedPrecision := precisionRegexp.FindStringSubmatch(precision)
 	if parsedPrecision == nil {
-		err = errors.New(fmt.Sprintf("invalid precision string: %s", precision))
-		return
+		return a, fmt.Errorf("invalid precision string: %s", precision)
 	}
 
 	secondsPerPoint, err := parseUint32(parsedPrecision[1])
 	if err != nil {
-		return
+		return a, err
 	}
 
 	if parsedPrecision[2] != "" {
 		secondsPerPoint, err = expandUnits(secondsPerPoint, parsedPrecision[2])
 		if err != nil {
-			return
+			return a, err
 		}
 	}
 
 	parsedPoints := precisionRegexp.FindStringSubmatch(retention)
 	if parsedPoints == nil {
-		err = errors.New(fmt.Sprintf("invalid retention string: %s", precision))
-		return
+		return a, fmt.Errorf("invalid retention string: %s", precision)
 	}
 
 	points, err := parseUint32(parsedPoints[1])
 	if err != nil {
-		return
+		return a, err
 	}
 
 	var retentionSeconds uint32
 	if parsedPoints[2] != "" {
 		retentionSeconds, err = expandUnits(points, parsedPoints[2])
 		if err != nil {
-			return
+			return a, err
 		}
 		points = retentionSeconds / secondsPerPoint
 	}
 
 	a = ArchiveInfo{0, secondsPerPoint, points}
-	return
+	return a, nil
 }
 
 func quantizeArchive(points archive, resolution uint32) archive {
