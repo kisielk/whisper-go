@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/kisielk/whisper-go/whisper"
 	"flag"
 	"fmt"
+	"github.com/kisielk/whisper-go/whisper"
 	"log"
 	"os"
 )
@@ -50,7 +50,7 @@ func main() {
 		archives = append(archives, archive)
 	}
 
-	err := whisper.Create(path, archives, float32(xFilesFactor), aggregationMethod, false)
+	_, err := whisper.Create(path, archives, float32(xFilesFactor), aggregationMethod, false)
 	if err != nil {
 		log.Fatal(err)
 	}
