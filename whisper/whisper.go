@@ -348,11 +348,11 @@ func (w Whisper) Update(point Point) error {
 	var lowerArchives []ArchiveInfo
 	var currentArchive ArchiveInfo
 	for i, ca := range w.Header.Archives {
-		if ca.Retention() < diff {
-			continue
+		if ca.Retention() > diff {
+			lowerArchives = w.Header.Archives[i+1:]
+			currentArchive = ca
+			break
 		}
-		lowerArchives = w.Header.Archives[i+1:]
-		currentArchive = ca
 	}
 
 	// Normalize the point's timestamp to the current archive's precision and write the point
