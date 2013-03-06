@@ -208,6 +208,14 @@ func readHeader(buf io.ReadSeeker) (header Header, err error) {
 	return
 }
 
+var (
+	ErrNoArchives         = errors.New("archive list must contain at least one archive.")
+	ErrDuplicateArchive   = errors.New("no archive may be a duplicate of another.")
+	ErrUnevenPrecision    = errors.New("higher precision archives must evenly divide in to lower precision.")
+	ErrLowRetention       = errors.New("lower precision archives must cover a larger time interval than higher precision.")
+	ErrInsufficientPoints = errors.New("archive has insufficient points to aggregate to a lower precision")
+)
+
 /*
 
 Validates a list of ArchiveInfos
@@ -230,35 +238,33 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 
 	// 1.
 	if len(archives) == 0 {
-		return errors.New("archive list cannot have 0 length")
+		return ErrNoArchives
 	}
 
-	for i, archive := range archives {
-		if i == (len(archives) - 1) {
-			break
-		}
+	for i := 0; i < len(archives)-1; i++ {
+		archive := archives[i]
+		nextArchive := archives[i+1]
 
 		// 2.
-		nextArchive := archives[i+1]
-		if !(archive.SecondsPerPoint < nextArchive.SecondsPerPoint) {
-			return errors.New("no archive may be a duplicate of another")
+		if archive.SecondsPerPoint == nextArchive.SecondsPerPoint {
+			return ErrDuplicateArchive
 		}
 
 		// 3.
 		if nextArchive.SecondsPerPoint%archive.SecondsPerPoint != 0 {
-			return errors.New("higher precision archives must evenly divide in to lower precision")
+			return ErrUnevenPrecision
 		}
 
 		// 4.
 		nextRetention := nextArchive.Retention()
 		retention := archive.Retention()
 		if !(nextRetention > retention) {
-			return errors.New("lower precision archives must cover a larger time interval than higher precision")
+			return ErrLowRetention
 		}
 
 		// 5.
 		if !(archive.Points >= (nextArchive.SecondsPerPoint / archive.SecondsPerPoint)) {
-			return errors.New("each archive must be able to consolidate the next")
+			return ErrInsufficientPoints
 		}
 
 	}
