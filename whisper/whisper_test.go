@@ -109,6 +109,7 @@ func TestWhisperAggregation(t *testing.T) {
 
 func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
+	defer os.Remove(filename)
 	w, err := Create(filename, []ArchiveInfo{ArchiveInfo{SecondsPerPoint: 60, Points: 10}}, 0.5, AGGREGATION_AVERAGE, false)
 	if err != nil {
 		panic(err)
@@ -122,4 +123,41 @@ func TestMaxRetention(t *testing.T) {
 	if err = w.Update(valid); err != nil {
 		t.Fatalf("valid point returned an error: %s", err)
 	}
+}
+
+func TestValidateArchiveList(t *testing.T) {
+	tests := []struct {
+		Archives []ArchiveInfo
+		Error    error
+	}{
+		{[]ArchiveInfo{}, ErrNoArchives},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 10, Points: 10},
+			ArchiveInfo{SecondsPerPoint: 10, Points: 5},
+		}, ErrDuplicateArchive},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 2, Points: 5},
+			ArchiveInfo{SecondsPerPoint: 3, Points: 5},
+		}, ErrUnevenPrecision},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 10, Points: 6},
+			ArchiveInfo{SecondsPerPoint: 5, Points: 13},
+		}, ErrLowRetention},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 10, Points: 6},
+			ArchiveInfo{SecondsPerPoint: 70, Points: 10},
+		}, ErrInsufficientPoints},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 2, Points: 5},
+			ArchiveInfo{SecondsPerPoint: 4, Points: 10},
+			ArchiveInfo{SecondsPerPoint: 8, Points: 20},
+		}, nil},
+	}
+
+	for i, test := range tests {
+		if err := ValidateArchiveList(test.Archives); err != test.Error {
+			t.Errorf("%d: got: %v, want: %v", i, err, test.Error)
+		}
+	}
+
 }

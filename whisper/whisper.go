@@ -32,7 +32,7 @@ type ArchiveInfo struct {
 	Points          uint32 // The number of data points
 }
 
-// Returns the retention period of the archive in seconds
+// Retention returns the retention period of the archive in seconds
 func (a ArchiveInfo) Retention() uint32 {
 	return a.SecondsPerPoint * a.Points
 }
@@ -124,6 +124,21 @@ type Interval struct {
 	Step           uint32 // Step size in seconds
 }
 
+// From returns the interval's FromTimestamp as a time.Time
+func (i Interval) From() time.Time {
+	return time.Unix(int64(i.FromTimestamp), 0)
+}
+
+// Until returns the interval's UntilTimestamp as a time.Time
+func (i Interval) Until() time.Time {
+	return time.Unix(int64(i.UntilTimestamp), 0)
+}
+
+// Duration returns the interval length as a time.Duration
+func (i Interval) Duration() time.Duration {
+	return i.Until().Sub(i.From())
+}
+
 // Whisper represents a handle to a whisper database.
 type Whisper struct {
 	Header Header
@@ -208,6 +223,14 @@ func readHeader(buf io.ReadSeeker) (header Header, err error) {
 	return
 }
 
+var (
+	ErrNoArchives         = errors.New("archive list must contain at least one archive.")
+	ErrDuplicateArchive   = errors.New("no archive may be a duplicate of another.")
+	ErrUnevenPrecision    = errors.New("higher precision archives must evenly divide in to lower precision.")
+	ErrLowRetention       = errors.New("lower precision archives must cover a larger time interval than higher precision.")
+	ErrInsufficientPoints = errors.New("archive has insufficient points to aggregate to a lower precision")
+)
+
 /*
 
 Validates a list of ArchiveInfos
@@ -230,35 +253,33 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 
 	// 1.
 	if len(archives) == 0 {
-		return errors.New("archive list cannot have 0 length")
+		return ErrNoArchives
 	}
 
-	for i, archive := range archives {
-		if i == (len(archives) - 1) {
-			break
-		}
+	for i := 0; i < len(archives)-1; i++ {
+		archive := archives[i]
+		nextArchive := archives[i+1]
 
 		// 2.
-		nextArchive := archives[i+1]
-		if !(archive.SecondsPerPoint < nextArchive.SecondsPerPoint) {
-			return errors.New("no archive may be a duplicate of another")
+		if archive.SecondsPerPoint == nextArchive.SecondsPerPoint {
+			return ErrDuplicateArchive
 		}
 
 		// 3.
 		if nextArchive.SecondsPerPoint%archive.SecondsPerPoint != 0 {
-			return errors.New("higher precision archives must evenly divide in to lower precision")
+			return ErrUnevenPrecision
 		}
 
 		// 4.
 		nextRetention := nextArchive.Retention()
 		retention := archive.Retention()
 		if !(nextRetention > retention) {
-			return errors.New("lower precision archives must cover a larger time interval than higher precision")
+			return ErrLowRetention
 		}
 
 		// 5.
 		if !(archive.Points >= (nextArchive.SecondsPerPoint / archive.SecondsPerPoint)) {
-			return errors.New("each archive must be able to consolidate the next")
+			return ErrInsufficientPoints
 		}
 
 	}
@@ -327,7 +348,7 @@ func openWhisper(f *os.File) (*Whisper, error) {
 	return &Whisper{Header: header, file: f}, nil
 }
 
-// Open a whisper database
+// Open opens an existing whisper database
 func Open(path string) (*Whisper, error) {
 	file, err := os.OpenFile(path, os.O_RDWR, 0666)
 	if err != nil {
@@ -340,7 +361,7 @@ func (w *Whisper) Close() error {
 	return w.file.Close()
 }
 
-// Write a single datapoint to the whisper database
+// Update writes a single datapoint to the whisper database
 func (w *Whisper) Update(point Point) error {
 	now := uint32(time.Now().Unix())
 	diff := now - point.Timestamp
@@ -381,7 +402,9 @@ func (w *Whisper) Update(point Point) error {
 	return nil
 }
 
-// Write a series of datapoints to the whisper database
+// UpdateMany write a slice of datapoints to the whisper database. The points
+// do not have to be unique or sorted. If two points cover the same time
+// interval the last point encountered will be retained.
 func (w *Whisper) UpdateMany(points []Point) error {
 	now := uint32(time.Now().Unix())
 
@@ -427,13 +450,24 @@ PointLoop:
 	return nil
 }
 
-// Fetch all points since a timestamp
+// Fetch is equivalent to calling FetchUntil with until set to time.Now()
 func (w *Whisper) Fetch(from uint32) (interval Interval, points []Point, err error) {
 	now := uint32(time.Now().Unix())
 	return w.FetchUntil(from, now)
 }
 
-// Fetch all points between two timestamps
+// FetchTime is like Fetch but accepts a time.Time
+func (w *Whisper) FetchTime(from time.Time) (Interval, []Point, error) {
+	now := uint32(time.Now().Unix())
+	return w.FetchUntil(uint32(from.Unix()), now)
+}
+
+// FetchUntilTime is like FetchUntil but accepts time.Time
+func (w *Whisper) FetchUntilTime(from, until time.Time) (Interval, []Point, error) {
+	return w.FetchUntil(uint32(from.Unix()), uint32(until.Unix()))
+}
+
+// FetchUntil returns all points between two timestamps
 func (w *Whisper) FetchUntil(from, until uint32) (interval Interval, points []Point, err error) {
 	now := uint32(time.Now().Unix())
 
