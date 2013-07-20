@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var ainfo = NewArchiveInfo
+
 func tempFileName() string {
 	f, err := ioutil.TempFile("", "whisper")
 	if err != nil {
@@ -96,9 +98,10 @@ func TestParseArchiveInfo(t *testing.T) {
 
 func TestWhisperAggregation(t *testing.T) {
 	filename := tempFileName()
+	defer os.Remove(filename)
 	w, err := Create(filename, []ArchiveInfo{}, 0.5, AGGREGATION_MIN, false)
 	if err != nil {
-		panic(err)
+		t.Fatal("failed to create database:", err)
 	}
 
 	w.SetAggregationMethod(AGGREGATION_MAX)
@@ -107,12 +110,37 @@ func TestWhisperAggregation(t *testing.T) {
 	}
 }
 
+func TestArchiveHeader(t *testing.T) {
+	filename := tempFileName()
+	defer os.Remove(filename)
+	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, 0.5, AGGREGATION_AVERAGE, false)
+	if err != nil {
+		t.Fatal("failed to create database:", err)
+	}
+
+	meta := w.Header.Metadata
+	expectedMeta := Metadata{AGGREGATION_AVERAGE, 60 * 60, 0.5, 2}
+	if meta != expectedMeta {
+		t.Errorf("bad metadata, got %v want %v", meta, expectedMeta)
+	}
+
+	archive0 := ArchiveInfo{metadataSize, 1, 60}
+	if w.Header.Archives[0] != archive0 {
+		t.Errorf("bad archive 0, got %v want %v", w.Header.Archives[0], archive0)
+	}
+
+	archive1 := ArchiveInfo{metadataSize + pointSize*60, 60, 60}
+	if w.Header.Archives[1] != archive1 {
+		t.Errorf("bad archive 1, got %v want %v", w.Header.Archives[1], archive1)
+	}
+}
+
 func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
-	w, err := Create(filename, []ArchiveInfo{ArchiveInfo{SecondsPerPoint: 60, Points: 10}}, 0.5, AGGREGATION_AVERAGE, false)
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, 0.5, AGGREGATION_AVERAGE, false)
 	if err != nil {
-		panic(err)
+		t.Fatal("failed to create database:", err)
 	}
 
 	invalid := NewPoint(time.Now().Add(-11*time.Minute), 0)
@@ -125,60 +153,39 @@ func TestMaxRetention(t *testing.T) {
 	}
 }
 
+func TestCreateTwice(t *testing.T) {
+	filename := tempFileName()
+	archiveInfos := []ArchiveInfo{NewArchiveInfo(60, 10)}
+	defer os.Remove(filename)
+	_, err := Create(filename, archiveInfos, 0.5, AGGREGATION_AVERAGE, false)
+	if err != nil {
+		t.Fatal("failed to create database:", err)
+	}
+	_, err = Create(filename, archiveInfos, 0.5, AGGREGATION_AVERAGE, false)
+	if err == nil {
+		t.Fatal("no error when attempting to overwrite database")
+	}
+}
+
 func TestValidateArchiveList(t *testing.T) {
 	tests := []struct {
 		Archives []ArchiveInfo
 		Error    error
 	}{
 		{[]ArchiveInfo{}, ErrNoArchives},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 10, Points: 10},
-			ArchiveInfo{SecondsPerPoint: 10, Points: 5},
-		}, ErrDuplicateArchive},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 2, Points: 5},
-			ArchiveInfo{SecondsPerPoint: 3, Points: 5},
-		}, ErrUnevenPrecision},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 10, Points: 6},
-			ArchiveInfo{SecondsPerPoint: 5, Points: 13},
-		}, ErrLowRetention},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 10, Points: 6},
-			ArchiveInfo{SecondsPerPoint: 70, Points: 10},
-		}, ErrInsufficientPoints},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 2, Points: 5},
-			ArchiveInfo{SecondsPerPoint: 4, Points: 10},
-			ArchiveInfo{SecondsPerPoint: 8, Points: 20},
-		}, nil},
+		{[]ArchiveInfo{ainfo(10, 10), ainfo(10, 5)}, ErrDuplicateArchive},
+		{[]ArchiveInfo{ainfo(2, 5), ainfo(3, 5)}, ErrUnevenPrecision},
+		{[]ArchiveInfo{ainfo(10, 6), ainfo(5, 13)}, ErrLowRetention},
+		{[]ArchiveInfo{ainfo(10, 6), ainfo(70, 10)}, ErrInsufficientPoints},
+		{[]ArchiveInfo{ainfo(2, 5), ainfo(4, 10), ainfo(8, 20)}, nil},
 
 		// The following tests adapted from test_whisper.py
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 1, Points: 60},
-			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
-		}, nil},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 1, Points: 60},
-			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
-			ArchiveInfo{SecondsPerPoint: 1, Points: 60},
-		}, ErrDuplicateArchive},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
-			ArchiveInfo{SecondsPerPoint: 6, Points: 60},
-		}, nil},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
-			ArchiveInfo{SecondsPerPoint: 7, Points: 60},
-		}, ErrUnevenPrecision},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 1, Points: 60},
-			ArchiveInfo{SecondsPerPoint: 10, Points: 1},
-		}, ErrLowRetention},
-		{[]ArchiveInfo{
-			ArchiveInfo{SecondsPerPoint: 1, Points: 30},
-			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
-		}, ErrInsufficientPoints},
+		{[]ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, nil},
+		{[]ArchiveInfo{ainfo(1, 60), ainfo(60, 60), ainfo(1, 60)}, ErrDuplicateArchive},
+		{[]ArchiveInfo{ainfo(60, 60), ainfo(6, 60)}, nil},
+		{[]ArchiveInfo{ainfo(60, 60), ainfo(7, 60)}, ErrUnevenPrecision},
+		{[]ArchiveInfo{ainfo(1, 60), ainfo(10, 1)}, ErrLowRetention},
+		{[]ArchiveInfo{ainfo(1, 30), ainfo(60, 60)}, ErrInsufficientPoints},
 	}
 
 	for i, test := range tests {
@@ -186,5 +193,4 @@ func TestValidateArchiveList(t *testing.T) {
 			t.Errorf("%d: got: %v, want: %v", i, err, test.Error)
 		}
 	}
-
 }

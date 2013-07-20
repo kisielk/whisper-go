@@ -32,6 +32,11 @@ type ArchiveInfo struct {
 	Points          uint32 // The number of data points
 }
 
+// NewArchiveInfo returns a new ArchiveInfo with a zero offset
+func NewArchiveInfo(secondsPerPoint, points uint32) ArchiveInfo {
+	return ArchiveInfo{SecondsPerPoint: secondsPerPoint, Points: points}
+}
+
 // Retention returns the retention period of the archive in seconds
 func (a ArchiveInfo) Retention() uint32 {
 	return a.SecondsPerPoint * a.Points
