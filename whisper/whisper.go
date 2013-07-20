@@ -370,7 +370,7 @@ func (w *Whisper) Close() error {
 }
 
 // Update writes a single datapoint to the whisper database
-func (w Whisper) Update(point Point) error {
+func (w *Whisper) Update(point Point) error {
 	now := uint32(time.Now().Unix())
 	diff := now - point.Timestamp
 	if !((diff < w.Header.Metadata.MaxRetention) && diff >= 0) {
@@ -413,7 +413,7 @@ func (w Whisper) Update(point Point) error {
 // UpdateMany write a slice of datapoints to the whisper database.
 // The points do not have to be unique or sorted.
 // If two points cover the same time interval the last point encountered will be retained.
-func (w Whisper) UpdateMany(points []Point) error {
+func (w *Whisper) UpdateMany(points []Point) error {
 	now := uint32(time.Now().Unix())
 
 	archiveIndex := 0
@@ -459,24 +459,24 @@ PointLoop:
 }
 
 // Fetch is equivalent to calling FetchUntil with until set to time.Now()
-func (w Whisper) Fetch(from uint32) (Interval, []Point, error) {
+func (w *Whisper) Fetch(from uint32) (Interval, []Point, error) {
 	now := uint32(time.Now().Unix())
 	return w.FetchUntil(from, now)
 }
 
 // FetchTime is like Fetch but accepts a time.Time
-func (w Whisper) FetchTime(from time.Time) (Interval, []Point, error) {
+func (w *Whisper) FetchTime(from time.Time) (Interval, []Point, error) {
 	now := uint32(time.Now().Unix())
 	return w.FetchUntil(uint32(from.Unix()), now)
 }
 
 // FetchUntilTime is like FetchUntil but accepts time.Time
-func (w Whisper) FetchUntilTime(from, until time.Time) (Interval, []Point, error) {
+func (w *Whisper) FetchUntilTime(from, until time.Time) (Interval, []Point, error) {
 	return w.FetchUntil(uint32(from.Unix()), uint32(until.Unix()))
 }
 
 // FetchUntil returns all points between two timestamps
-func (w Whisper) FetchUntil(from, until uint32) (interval Interval, points []Point, err error) {
+func (w *Whisper) FetchUntil(from, until uint32) (interval Interval, points []Point, err error) {
 	now := uint32(time.Now().Unix())
 
 	// Tidy up the time ranges
@@ -519,7 +519,7 @@ func (w Whisper) FetchUntil(from, until uint32) (interval Interval, points []Poi
 	return
 }
 
-func (w Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points archive) (err error) {
+func (w *Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points archive) (err error) {
 	type stampedArchive struct {
 		timestamp uint32
 		points    archive
@@ -596,7 +596,7 @@ PropagateLoop:
 	return
 }
 
-func (w Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveInfo) (result bool, err error) {
+func (w *Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveInfo) (result bool, err error) {
 	// The start of the lower resolution archive interval.
 	// Essentially a downsampling of the higher resolution timestamp.
 	lowerIntervalStart := timestamp - (timestamp % lower.SecondsPerPoint)
@@ -669,7 +669,7 @@ func (w *Whisper) SetAggregationMethod(m AggregationMethod) error {
 }
 
 // Read a single point from an offset in the database
-func (w Whisper) readPoint(offset uint32) (point Point, err error) {
+func (w *Whisper) readPoint(offset uint32) (point Point, err error) {
 	points := make([]Point, 1)
 	err = w.readPoints(offset, points)
 	point = points[0]
@@ -677,7 +677,7 @@ func (w Whisper) readPoint(offset uint32) (point Point, err error) {
 }
 
 // Read a slice of points from an offset in the database
-func (w Whisper) readPoints(offset uint32, points []Point) error {
+func (w *Whisper) readPoints(offset uint32, points []Point) error {
 	_, err := w.file.Seek(int64(offset), 0)
 	if err != nil {
 		return err
@@ -685,7 +685,7 @@ func (w Whisper) readPoints(offset uint32, points []Point) error {
 	return binary.Read(w.file, binary.BigEndian, points)
 }
 
-func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
+func (w *Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
 	archiveStart := archive.Offset
 	archiveEnd := archive.end()
 	if startOffset < endOffset {
@@ -715,7 +715,7 @@ func (w Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endO
 
 // Write a points to an archive in the order given
 // The offset is determined by the first point
-func (w Whisper) writePoints(archive ArchiveInfo, points ...Point) error {
+func (w *Whisper) writePoints(archive ArchiveInfo, points ...Point) error {
 	nPoints := uint32(len(points))
 
 	// Sanity check
@@ -758,7 +758,7 @@ func (w Whisper) writePoints(archive ArchiveInfo, points ...Point) error {
 }
 
 // Get the offset of a timestamp within an archive
-func (w Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint32, err error) {
+func (w *Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint32, err error) {
 	basePoint, err := w.readPoint(0)
 	if err != nil {
 		return
