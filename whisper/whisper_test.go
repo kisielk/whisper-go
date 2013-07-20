@@ -152,6 +152,33 @@ func TestValidateArchiveList(t *testing.T) {
 			ArchiveInfo{SecondsPerPoint: 4, Points: 10},
 			ArchiveInfo{SecondsPerPoint: 8, Points: 20},
 		}, nil},
+
+		// The following tests adapted from test_whisper.py
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 1, Points: 60},
+			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
+		}, nil},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 1, Points: 60},
+			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
+			ArchiveInfo{SecondsPerPoint: 1, Points: 60},
+		}, ErrDuplicateArchive},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
+			ArchiveInfo{SecondsPerPoint: 6, Points: 60},
+		}, nil},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
+			ArchiveInfo{SecondsPerPoint: 7, Points: 60},
+		}, ErrUnevenPrecision},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 1, Points: 60},
+			ArchiveInfo{SecondsPerPoint: 10, Points: 1},
+		}, ErrLowRetention},
+		{[]ArchiveInfo{
+			ArchiveInfo{SecondsPerPoint: 1, Points: 30},
+			ArchiveInfo{SecondsPerPoint: 60, Points: 60},
+		}, ErrInsufficientPoints},
 	}
 
 	for i, test := range tests {
