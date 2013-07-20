@@ -19,10 +19,17 @@ import (
 
 // Metadata holds metadata that's common to an entire whisper database
 type Metadata struct {
-	AggregationMethod AggregationMethod // Aggregation method used. See the AGGREGATION_* constants
-	MaxRetention      uint32            // The maximum retention period
-	XFilesFactor      float32           // The minimum percentage of known values required to aggregate
-	ArchiveCount      uint32            // The number of archives in the database
+	// Aggregation method used. See the Aggregation* constants.
+	AggregationMethod AggregationMethod
+
+	// The maximum retention period.
+	MaxRetention uint32
+
+	// The minimum percentage of known values required to aggregate.
+	XFilesFactor float32
+
+	// The number of archives in the database.
+	ArchiveCount uint32
 }
 
 // ArchiveInfo holds metadata about a single archive within a whisper database
@@ -63,6 +70,11 @@ const (
 	AggregationLast    AggregationMethod = 3 // Aggregate using the last value
 	AggregationMax     AggregationMethod = 4 // Aggregate using the maximum value
 	AggregationMin     AggregationMethod = 5 // Aggregate using the minimum value
+)
+
+const (
+	DefaultXFilesFactor      = 0.5
+	DefaultAggregationMethod = AggregationAverage
 )
 
 func (m AggregationMethod) String() (s string) {
@@ -275,11 +287,30 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 
 }
 
-// Create a new whisper database at a given file path
-func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod AggregationMethod, sparse bool) (*Whisper, error) {
+// CreateOptions sets the option
+type CreateOptions struct {
+	// The XFiles factor to use. DefaultXFilesFactor if not set.
+	XFilesFactor float32
+
+	// The archive aggregation method to use. DefaultAggregationMethod if not set.
+	AggregationMethod AggregationMethod
+
+	// If true, allocate a sparse archive.
+	Sparse bool
+}
+
+// Create a new database at the given filepath.
+func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whisper, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return nil, err
+	}
+
+	if options.XFilesFactor == 0.0 {
+		options.XFilesFactor = DefaultXFilesFactor
+	}
+	if options.AggregationMethod == 0 {
+		options.AggregationMethod = DefaultAggregationMethod
 	}
 
 	oldest := uint32(0)
@@ -291,8 +322,8 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 	}
 
 	metadata := Metadata{
-		AggregationMethod: aggregationMethod,
-		XFilesFactor:      xFilesFactor,
+		AggregationMethod: options.AggregationMethod,
+		XFilesFactor:      options.XFilesFactor,
 		ArchiveCount:      uint32(len(archives)),
 		MaxRetention:      oldest,
 	}
@@ -311,7 +342,7 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 		archiveOffsetPointer += archive.Points * pointSize
 	}
 
-	if sparse {
+	if options.Sparse {
 		file.Seek(int64(archiveOffsetPointer-headerSize-1), 0)
 		file.Write([]byte{0})
 	} else {

@@ -99,7 +99,7 @@ func TestParseArchiveInfo(t *testing.T) {
 func TestWhisperAggregation(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
-	w, err := Create(filename, []ArchiveInfo{}, 0.5, AggregationMin, false)
+	w, err := Create(filename, []ArchiveInfo{}, CreateOptions{AggregationMethod: AggregationMin})
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -119,7 +119,7 @@ func TestArchiveHeader(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
 
-	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, 0.5, AggregationAverage, false)
+	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, CreateOptions{})
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -161,7 +161,7 @@ func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
 
-	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, 0.5, AggregationAverage, false)
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, CreateOptions{})
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -186,7 +186,7 @@ func TestCreateTwice(t *testing.T) {
 	archiveInfos := []ArchiveInfo{NewArchiveInfo(60, 10)}
 	defer os.Remove(filename)
 
-	w, err := Create(filename, archiveInfos, 0.5, AggregationAverage, false)
+	w, err := Create(filename, archiveInfos, CreateOptions{})
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -194,7 +194,7 @@ func TestCreateTwice(t *testing.T) {
 		t.Fatal("failed to close database:", err)
 	}
 
-	_, err = Create(filename, archiveInfos, 0.5, AggregationAverage, false)
+	_, err = Create(filename, archiveInfos, CreateOptions{})
 	if err == nil {
 		t.Fatal("no error when attempting to overwrite database")
 	}
