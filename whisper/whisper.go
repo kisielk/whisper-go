@@ -52,6 +52,7 @@ func (a ArchiveInfo) end() uint32 {
 	return a.Offset + a.size()
 }
 
+// The AggregationMethod type describes how values are aggregated from one Whisper archive to another.
 type AggregationMethod uint32
 
 // Valid aggregation methods
@@ -64,8 +65,8 @@ const (
 	AggregationMin     AggregationMethod = 5 // Aggregate using the minimum value
 )
 
-func (m *AggregationMethod) String() (s string) {
-	switch *m {
+func (m AggregationMethod) String() (s string) {
+	switch m {
 	case AggregationAverage:
 		s = "average"
 	case AggregationSum:
@@ -80,26 +81,6 @@ func (m *AggregationMethod) String() (s string) {
 		s = "unknown"
 	}
 	return
-}
-
-// Set sets the method m to the named method.
-// Valid names are: "average", "sum", "last", "min", and "max".
-// Any other name sets a to AggregationUnknown
-func (m *AggregationMethod) Set(name string) {
-	switch name {
-	case "average":
-		*m = AggregationAverage
-	case "sum":
-		*m = AggregationSum
-	case "last":
-		*m = AggregationLast
-	case "min":
-		*m = AggregationMin
-	case "max":
-		*m = AggregationMax
-	default:
-		*m = AggregationUnknown
-	}
 }
 
 // Header contains all the metadata about a whisper database.
