@@ -362,6 +362,11 @@ func Open(path string) (*Whisper, error) {
 	return openWhisper(file)
 }
 
+// Close closes a whisper database.
+func (w *Whisper) Close() error {
+	return w.file.Close()
+}
+
 // Update writes a single datapoint to the whisper database
 func (w Whisper) Update(point Point) error {
 	now := uint32(time.Now().Unix())

@@ -103,6 +103,11 @@ func TestWhisperAggregation(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
+	defer func() {
+		if err := w.Close(); err != nil {
+			t.Fatalf("failed to close database:", err)
+		}
+	}()
 
 	w.SetAggregationMethod(AGGREGATION_MAX)
 	if method := w.Header.Metadata.AggregationMethod; method != AGGREGATION_MAX {
@@ -113,35 +118,58 @@ func TestWhisperAggregation(t *testing.T) {
 func TestArchiveHeader(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
+
 	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, 0.5, AGGREGATION_AVERAGE, false)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
 
-	meta := w.Header.Metadata
-	expectedMeta := Metadata{AGGREGATION_AVERAGE, 60 * 60, 0.5, 2}
-	if meta != expectedMeta {
-		t.Errorf("bad metadata, got %v want %v", meta, expectedMeta)
+	verifyHeader := func(w *Whisper) {
+		meta := w.Header.Metadata
+		expectedMeta := Metadata{AGGREGATION_AVERAGE, 60 * 60, 0.5, 2}
+		if meta != expectedMeta {
+			t.Errorf("bad metadata, got %v want %v", meta, expectedMeta)
+		}
+
+		archive0 := ArchiveInfo{metadataSize, 1, 60}
+		if w.Header.Archives[0] != archive0 {
+			t.Errorf("bad archive 0, got %v want %v", w.Header.Archives[0], archive0)
+		}
+
+		archive1 := ArchiveInfo{metadataSize + pointSize*60, 60, 60}
+		if w.Header.Archives[1] != archive1 {
+			t.Errorf("bad archive 1, got %v want %v", w.Header.Archives[1], archive1)
+		}
 	}
 
-	archive0 := ArchiveInfo{metadataSize, 1, 60}
-	if w.Header.Archives[0] != archive0 {
-		t.Errorf("bad archive 0, got %v want %v", w.Header.Archives[0], archive0)
+	verifyHeader(w)
+	if err := w.Close(); err != nil {
+		t.Fatal("failed to close database:", err)
 	}
 
-	archive1 := ArchiveInfo{metadataSize + pointSize*60, 60, 60}
-	if w.Header.Archives[1] != archive1 {
-		t.Errorf("bad archive 1, got %v want %v", w.Header.Archives[1], archive1)
+	w, err = Open(filename)
+	if err != nil {
+		t.Fatal("failed to open database:", err)
+	}
+	verifyHeader(w)
+	if err := w.Close(); err != nil {
+		t.Fatal("failed to close database:", err)
 	}
 }
 
 func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
+
 	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, 0.5, AGGREGATION_AVERAGE, false)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
+	defer func() {
+		if err := w.Close(); err != nil {
+			t.Fatal("failed to close database:", err)
+		}
+	}()
 
 	invalid := NewPoint(time.Now().Add(-11*time.Minute), 0)
 	if err = w.Update(invalid); err == nil {
@@ -157,10 +185,15 @@ func TestCreateTwice(t *testing.T) {
 	filename := tempFileName()
 	archiveInfos := []ArchiveInfo{NewArchiveInfo(60, 10)}
 	defer os.Remove(filename)
-	_, err := Create(filename, archiveInfos, 0.5, AGGREGATION_AVERAGE, false)
+
+	w, err := Create(filename, archiveInfos, 0.5, AGGREGATION_AVERAGE, false)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
+	if err := w.Close(); err != nil {
+		t.Fatal("failed to close database:", err)
+	}
+
 	_, err = Create(filename, archiveInfos, 0.5, AGGREGATION_AVERAGE, false)
 	if err == nil {
 		t.Fatal("no error when attempting to overwrite database")
