@@ -56,25 +56,25 @@ type AggregationMethod uint32
 
 // Valid aggregation methods
 const (
-	AGGREGATION_UNKNOWN AggregationMethod = 0 // Unknown aggregation method
-	AGGREGATION_AVERAGE AggregationMethod = 1 // Aggregate using averaging
-	AGGREGATION_SUM     AggregationMethod = 2 // Aggregate using sum
-	AGGREGATION_LAST    AggregationMethod = 3 // Aggregate using the last value
-	AGGREGATION_MAX     AggregationMethod = 4 // Aggregate using the maximum value
-	AGGREGATION_MIN     AggregationMethod = 5 // Aggregate using the minimum value
+	AggregationUnknown AggregationMethod = 0 // Unknown aggregation method
+	AggregationAverage AggregationMethod = 1 // Aggregate using averaging
+	AggregationSum     AggregationMethod = 2 // Aggregate using sum
+	AggregationLast    AggregationMethod = 3 // Aggregate using the last value
+	AggregationMax     AggregationMethod = 4 // Aggregate using the maximum value
+	AggregationMin     AggregationMethod = 5 // Aggregate using the minimum value
 )
 
-func (a *AggregationMethod) String() (s string) {
-	switch *a {
-	case AGGREGATION_AVERAGE:
+func (m *AggregationMethod) String() (s string) {
+	switch *m {
+	case AggregationAverage:
 		s = "average"
-	case AGGREGATION_SUM:
+	case AggregationSum:
 		s = "sum"
-	case AGGREGATION_LAST:
+	case AggregationLast:
 		s = "last"
-	case AGGREGATION_MIN:
+	case AggregationMin:
 		s = "min"
-	case AGGREGATION_MAX:
+	case AggregationMax:
 		s = "max"
 	default:
 		s = "unknown"
@@ -82,22 +82,24 @@ func (a *AggregationMethod) String() (s string) {
 	return
 }
 
-func (a *AggregationMethod) Set(s string) error {
-	switch s {
+// Set sets the method m to the named method.
+// Valid names are: "average", "sum", "last", "min", and "max".
+// Any other name sets a to AggregationUnknown
+func (m *AggregationMethod) Set(name string) {
+	switch name {
 	case "average":
-		*a = AGGREGATION_AVERAGE
+		*m = AggregationAverage
 	case "sum":
-		*a = AGGREGATION_SUM
+		*m = AggregationSum
 	case "last":
-		*a = AGGREGATION_LAST
+		*m = AggregationLast
 	case "min":
-		*a = AGGREGATION_MIN
+		*m = AggregationMin
 	case "max":
-		*a = AGGREGATION_MAX
+		*m = AggregationMax
 	default:
-		*a = AGGREGATION_UNKNOWN
+		*m = AggregationUnknown
 	}
-	return nil
 }
 
 // Header contains all the metadata about a whisper database.
@@ -851,25 +853,25 @@ func quantizeTimestamp(timestamp uint32, resolution uint32) (quantized uint32) {
 
 func aggregate(aggregationMethod AggregationMethod, points []Point) (point Point, err error) {
 	switch aggregationMethod {
-	case AGGREGATION_AVERAGE:
+	case AggregationAverage:
 		for _, p := range points {
 			point.Value += p.Value
 		}
 		point.Value /= float64(len(points))
-	case AGGREGATION_SUM:
+	case AggregationSum:
 		for _, p := range points {
 			point.Value += p.Value
 		}
-	case AGGREGATION_LAST:
+	case AggregationLast:
 		point.Value = points[len(points)-1].Value
-	case AGGREGATION_MAX:
+	case AggregationMax:
 		point.Value = points[0].Value
 		for _, p := range points {
 			if p.Value > point.Value {
 				point.Value = p.Value
 			}
 		}
-	case AGGREGATION_MIN:
+	case AggregationMin:
 		point.Value = points[0].Value
 		for _, p := range points {
 			if p.Value < point.Value {

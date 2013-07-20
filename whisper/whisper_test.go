@@ -51,27 +51,27 @@ func TestQuantizePoint(t *testing.T) {
 func TestAggregate(t *testing.T) {
 	points := archive{Point{0, 0}, Point{0, 1}, Point{0, 2}, Point{0, 1}}
 	expected := Point{0, 1}
-	if p, err := aggregate(AGGREGATION_AVERAGE, points); (p != expected) || (err != nil) {
+	if p, err := aggregate(AggregationAverage, points); (p != expected) || (err != nil) {
 		t.Errorf("Average failed to average to %v, got %v: %v", expected, p, err)
 	}
 
 	expected = Point{0, 4}
-	if p, err := aggregate(AGGREGATION_SUM, points); (p != expected) || (err != nil) {
+	if p, err := aggregate(AggregationSum, points); (p != expected) || (err != nil) {
 		t.Errorf("Sum failed to aggregate to %v, got %v: %v", expected, p, err)
 	}
 
 	expected = Point{0, 1}
-	if p, err := aggregate(AGGREGATION_LAST, points); (p != expected) || (err != nil) {
+	if p, err := aggregate(AggregationLast, points); (p != expected) || (err != nil) {
 		t.Errorf("Last failed to aggregate to %v, got %v: %v", expected, p, err)
 	}
 
 	expected = Point{0, 2}
-	if p, err := aggregate(AGGREGATION_MAX, points); (p != expected) || (err != nil) {
+	if p, err := aggregate(AggregationMax, points); (p != expected) || (err != nil) {
 		t.Errorf("Max failed to aggregate to %v, got %v: %v", expected, p, err)
 	}
 
 	expected = Point{0, 0}
-	if p, err := aggregate(AGGREGATION_MIN, points); (p != expected) || (err != nil) {
+	if p, err := aggregate(AggregationMin, points); (p != expected) || (err != nil) {
 		t.Errorf("Min failed to aggregate to %v, got %v: %v", expected, p, err)
 	}
 
@@ -99,7 +99,7 @@ func TestParseArchiveInfo(t *testing.T) {
 func TestWhisperAggregation(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
-	w, err := Create(filename, []ArchiveInfo{}, 0.5, AGGREGATION_MIN, false)
+	w, err := Create(filename, []ArchiveInfo{}, 0.5, AggregationMin, false)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -109,9 +109,9 @@ func TestWhisperAggregation(t *testing.T) {
 		}
 	}()
 
-	w.SetAggregationMethod(AGGREGATION_MAX)
-	if method := w.Header.Metadata.AggregationMethod; method != AGGREGATION_MAX {
-		t.Fatalf("AggregationMethod: %d, want %d", method, AGGREGATION_MAX)
+	w.SetAggregationMethod(AggregationMax)
+	if method := w.Header.Metadata.AggregationMethod; method != AggregationMax {
+		t.Fatalf("AggregationMethod: %d, want %d", method, AggregationMax)
 	}
 }
 
@@ -119,14 +119,14 @@ func TestArchiveHeader(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
 
-	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, 0.5, AGGREGATION_AVERAGE, false)
+	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, 0.5, AggregationAverage, false)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
 
 	verifyHeader := func(w *Whisper) {
 		meta := w.Header.Metadata
-		expectedMeta := Metadata{AGGREGATION_AVERAGE, 60 * 60, 0.5, 2}
+		expectedMeta := Metadata{AggregationAverage, 60 * 60, 0.5, 2}
 		if meta != expectedMeta {
 			t.Errorf("bad metadata, got %v want %v", meta, expectedMeta)
 		}
@@ -161,7 +161,7 @@ func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
 
-	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, 0.5, AGGREGATION_AVERAGE, false)
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, 0.5, AggregationAverage, false)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -186,7 +186,7 @@ func TestCreateTwice(t *testing.T) {
 	archiveInfos := []ArchiveInfo{NewArchiveInfo(60, 10)}
 	defer os.Remove(filename)
 
-	w, err := Create(filename, archiveInfos, 0.5, AGGREGATION_AVERAGE, false)
+	w, err := Create(filename, archiveInfos, 0.5, AggregationAverage, false)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -194,7 +194,7 @@ func TestCreateTwice(t *testing.T) {
 		t.Fatal("failed to close database:", err)
 	}
 
-	_, err = Create(filename, archiveInfos, 0.5, AGGREGATION_AVERAGE, false)
+	_, err = Create(filename, archiveInfos, 0.5, AggregationAverage, false)
 	if err == nil {
 		t.Fatal("no error when attempting to overwrite database")
 	}
