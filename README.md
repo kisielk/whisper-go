@@ -1,3 +1,5 @@
+**WARNING** This library is still under development and largely untested. Do not attempt to use with production data.
+
 whisper-go
 ==========
 
