@@ -124,6 +124,7 @@ func TestArchiveHeader(t *testing.T) {
 		t.Fatal("failed to create database:", err)
 	}
 
+	hSize := headerSize(2)
 	verifyHeader := func(w *Whisper) {
 		meta := w.Header.Metadata
 		expectedMeta := Metadata{AggregationAverage, 60 * 60, 0.5, 2}
@@ -131,12 +132,12 @@ func TestArchiveHeader(t *testing.T) {
 			t.Errorf("bad metadata, got %v want %v", meta, expectedMeta)
 		}
 
-		archive0 := ArchiveInfo{metadataSize, 1, 60}
+		archive0 := ArchiveInfo{hSize, 1, 60}
 		if w.Header.Archives[0] != archive0 {
 			t.Errorf("bad archive 0, got %v want %v", w.Header.Archives[0], archive0)
 		}
 
-		archive1 := ArchiveInfo{metadataSize + pointSize*60, 60, 60}
+		archive1 := ArchiveInfo{hSize + pointSize*60, 60, 60}
 		if w.Header.Archives[1] != archive1 {
 			t.Errorf("bad archive 1, got %v want %v", w.Header.Archives[1], archive1)
 		}

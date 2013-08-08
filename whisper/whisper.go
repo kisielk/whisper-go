@@ -296,6 +296,11 @@ type CreateOptions struct {
 	Sparse bool
 }
 
+// headerSize calculates the size of a header with n archives
+func headerSize(n int) uint32 {
+	return metadataSize + (archiveInfoSize * uint32(n))
+}
+
 // Create a new database at the given filepath.
 func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whisper, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
@@ -328,8 +333,8 @@ func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whispe
 		return nil, err
 	}
 
-	headerSize := metadataSize + (archiveInfoSize * uint32(len(archives)))
-	archiveOffsetPointer := headerSize
+	hSize := headerSize(len(archives))
+	archiveOffsetPointer := hSize
 
 	for _, archive := range archives {
 		archive.Offset = archiveOffsetPointer
@@ -340,10 +345,10 @@ func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whispe
 	}
 
 	if options.Sparse {
-		file.Seek(int64(archiveOffsetPointer-headerSize-1), 0)
+		file.Seek(int64(archiveOffsetPointer-hSize-1), 0)
 		file.Write([]byte{0})
 	} else {
-		remaining := archiveOffsetPointer - headerSize
+		remaining := archiveOffsetPointer - hSize
 		chunkSize := uint32(16384)
 		buf := make([]byte, chunkSize)
 		for remaining > chunkSize {
