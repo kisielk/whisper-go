@@ -178,7 +178,7 @@ var precisionRegexp = regexp.MustCompile("^(\\d+)([smhdwy]?)")
 func init() {
 	pointSize = uint32(binary.Size(Point{}))
 	metadataSize = uint32(binary.Size(Metadata{}))
-	archiveSize = uint32(binary.Size(archive{}))
+	archiveSize = uint32(binary.Size(ArchiveInfo{}))
 }
 
 // Read the header of a whisper database
@@ -422,9 +422,9 @@ func (w *Whisper) Update(point Point) error {
 	return nil
 }
 
-// UpdateMany write a slice of datapoints to the whisper database.
-// The points do not have to be unique or sorted.
-// If two points cover the same time interval the last point encountered will be retained.
+// UpdateMany write a slice of datapoints to the whisper database. The points
+// do not have to be unique or sorted. If two points cover the same time
+// interval the last point encountered will be retained.
 func (w *Whisper) UpdateMany(points []Point) error {
 	now := uint32(time.Now().Unix())
 
