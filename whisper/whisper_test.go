@@ -105,7 +105,7 @@ func TestWhisperAggregation(t *testing.T) {
 	}
 	defer func() {
 		if err := w.Close(); err != nil {
-			t.Fatalf("failed to close database:", err)
+			t.Fatal("failed to close database:", err)
 		}
 	}()
 
