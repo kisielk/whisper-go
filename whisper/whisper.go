@@ -169,17 +169,14 @@ type reverseArchive struct{ archive }
 // sort.Interface
 func (r reverseArchive) Less(i, j int) bool { return r.archive.Less(j, i) }
 
-// some sizes used fo
-var pointSize, metadataSize, archiveSize uint32
+var (
+	pointSize       = uint32(binary.Size(Point{}))
+	metadataSize    = uint32(binary.Size(Metadata{}))
+	archiveInfoSize = uint32(binary.Size(ArchiveInfo{}))
+)
 
 // a regular expression matching a precision string such as 120y
 var precisionRegexp = regexp.MustCompile("^(\\d+)([smhdwy]?)")
-
-func init() {
-	pointSize = uint32(binary.Size(Point{}))
-	metadataSize = uint32(binary.Size(Metadata{}))
-	archiveSize = uint32(binary.Size(ArchiveInfo{}))
-}
 
 // Read the header of a whisper database
 func readHeader(buf io.ReadSeeker) (header Header, err error) {
@@ -331,7 +328,7 @@ func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whispe
 		return nil, err
 	}
 
-	headerSize := metadataSize + (archiveSize * uint32(len(archives)))
+	headerSize := metadataSize + (archiveInfoSize * uint32(len(archives)))
 	archiveOffsetPointer := headerSize
 
 	for _, archive := range archives {
