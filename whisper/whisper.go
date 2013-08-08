@@ -178,7 +178,7 @@ var precisionRegexp = regexp.MustCompile("^(\\d+)([smhdwy]?)")
 func init() {
 	pointSize = uint32(binary.Size(Point{}))
 	metadataSize = uint32(binary.Size(Metadata{}))
-	archiveSize = uint32(binary.Size(archive{}))
+	archiveSize = uint32(binary.Size(ArchiveInfo{}))
 }
 
 // Read the header of a whisper database
