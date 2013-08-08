@@ -19,10 +19,17 @@ import (
 
 // Metadata holds metadata that's common to an entire whisper database
 type Metadata struct {
-	AggregationMethod AggregationMethod // Aggregation method used. See the AGGREGATION_* constants
-	MaxRetention      uint32            // The maximum retention period
-	XFilesFactor      float32           // The minimum percentage of known values required to aggregate
-	ArchiveCount      uint32            // The number of archives in the database
+	// Aggregation method used. See the Aggregation* constants.
+	AggregationMethod AggregationMethod
+
+	// The maximum retention period.
+	MaxRetention uint32
+
+	// The minimum percentage of known values required to aggregate.
+	XFilesFactor float32
+
+	// The number of archives in the database.
+	ArchiveCount uint32
 }
 
 // ArchiveInfo holds metadata about a single archive within a whisper database
@@ -30,6 +37,11 @@ type ArchiveInfo struct {
 	Offset          uint32 // The byte offset of the archive within the database
 	SecondsPerPoint uint32 // The number of seconds of elapsed time represented by a data point
 	Points          uint32 // The number of data points
+}
+
+// NewArchiveInfo returns a new ArchiveInfo with a zero offset
+func NewArchiveInfo(secondsPerPoint, points uint32) ArchiveInfo {
+	return ArchiveInfo{SecondsPerPoint: secondsPerPoint, Points: points}
 }
 
 // Retention returns the retention period of the archive in seconds
@@ -47,52 +59,40 @@ func (a ArchiveInfo) end() uint32 {
 	return a.Offset + a.size()
 }
 
+// The AggregationMethod type describes how values are aggregated from one Whisper archive to another.
 type AggregationMethod uint32
 
 // Valid aggregation methods
 const (
-	AGGREGATION_UNKNOWN AggregationMethod = 0 // Unknown aggregation method
-	AGGREGATION_AVERAGE AggregationMethod = 1 // Aggregate using averaging
-	AGGREGATION_SUM     AggregationMethod = 2 // Aggregate using sum
-	AGGREGATION_LAST    AggregationMethod = 3 // Aggregate using the last value
-	AGGREGATION_MAX     AggregationMethod = 4 // Aggregate using the maximum value
-	AGGREGATION_MIN     AggregationMethod = 5 // Aggregate using the minimum value
+	AggregationUnknown AggregationMethod = 0 // Unknown aggregation method
+	AggregationAverage AggregationMethod = 1 // Aggregate using averaging
+	AggregationSum     AggregationMethod = 2 // Aggregate using sum
+	AggregationLast    AggregationMethod = 3 // Aggregate using the last value
+	AggregationMax     AggregationMethod = 4 // Aggregate using the maximum value
+	AggregationMin     AggregationMethod = 5 // Aggregate using the minimum value
 )
 
-func (a *AggregationMethod) String() (s string) {
-	switch *a {
-	case AGGREGATION_AVERAGE:
+const (
+	DefaultXFilesFactor      = 0.5
+	DefaultAggregationMethod = AggregationAverage
+)
+
+func (m AggregationMethod) String() (s string) {
+	switch m {
+	case AggregationAverage:
 		s = "average"
-	case AGGREGATION_SUM:
+	case AggregationSum:
 		s = "sum"
-	case AGGREGATION_LAST:
+	case AggregationLast:
 		s = "last"
-	case AGGREGATION_MIN:
+	case AggregationMin:
 		s = "min"
-	case AGGREGATION_MAX:
+	case AggregationMax:
 		s = "max"
 	default:
 		s = "unknown"
 	}
 	return
-}
-
-func (a *AggregationMethod) Set(s string) error {
-	switch s {
-	case "average":
-		*a = AGGREGATION_AVERAGE
-	case "sum":
-		*a = AGGREGATION_SUM
-	case "last":
-		*a = AGGREGATION_LAST
-	case "min":
-		*a = AGGREGATION_MIN
-	case "max":
-		*a = AGGREGATION_MAX
-	default:
-		*a = AGGREGATION_UNKNOWN
-	}
-	return nil
 }
 
 // Header contains all the metadata about a whisper database.
@@ -287,11 +287,30 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 
 }
 
-// Create a new whisper database at a given file path
-func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregationMethod AggregationMethod, sparse bool) (*Whisper, error) {
+// CreateOptions sets the option
+type CreateOptions struct {
+	// The XFiles factor to use. DefaultXFilesFactor if not set.
+	XFilesFactor float32
+
+	// The archive aggregation method to use. DefaultAggregationMethod if not set.
+	AggregationMethod AggregationMethod
+
+	// If true, allocate a sparse archive.
+	Sparse bool
+}
+
+// Create a new database at the given filepath.
+func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whisper, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return nil, err
+	}
+
+	if options.XFilesFactor == 0.0 {
+		options.XFilesFactor = DefaultXFilesFactor
+	}
+	if options.AggregationMethod == 0 {
+		options.AggregationMethod = DefaultAggregationMethod
 	}
 
 	oldest := uint32(0)
@@ -303,8 +322,8 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 	}
 
 	metadata := Metadata{
-		AggregationMethod: aggregationMethod,
-		XFilesFactor:      xFilesFactor,
+		AggregationMethod: options.AggregationMethod,
+		XFilesFactor:      options.XFilesFactor,
 		ArchiveCount:      uint32(len(archives)),
 		MaxRetention:      oldest,
 	}
@@ -323,7 +342,7 @@ func Create(path string, archives []ArchiveInfo, xFilesFactor float32, aggregati
 		archiveOffsetPointer += archive.Points * pointSize
 	}
 
-	if sparse {
+	if options.Sparse {
 		file.Seek(int64(archiveOffsetPointer-headerSize-1), 0)
 		file.Write([]byte{0})
 	} else {
@@ -357,6 +376,7 @@ func Open(path string) (*Whisper, error) {
 	return openWhisper(file)
 }
 
+// Close closes a whisper database.
 func (w *Whisper) Close() error {
 	return w.file.Close()
 }
@@ -451,7 +471,7 @@ PointLoop:
 }
 
 // Fetch is equivalent to calling FetchUntil with until set to time.Now()
-func (w *Whisper) Fetch(from uint32) (interval Interval, points []Point, err error) {
+func (w *Whisper) Fetch(from uint32) (Interval, []Point, error) {
 	now := uint32(time.Now().Unix())
 	return w.FetchUntil(from, now)
 }
@@ -845,25 +865,25 @@ func quantizeTimestamp(timestamp uint32, resolution uint32) (quantized uint32) {
 
 func aggregate(aggregationMethod AggregationMethod, points []Point) (point Point, err error) {
 	switch aggregationMethod {
-	case AGGREGATION_AVERAGE:
+	case AggregationAverage:
 		for _, p := range points {
 			point.Value += p.Value
 		}
 		point.Value /= float64(len(points))
-	case AGGREGATION_SUM:
+	case AggregationSum:
 		for _, p := range points {
 			point.Value += p.Value
 		}
-	case AGGREGATION_LAST:
+	case AggregationLast:
 		point.Value = points[len(points)-1].Value
-	case AGGREGATION_MAX:
+	case AggregationMax:
 		point.Value = points[0].Value
 		for _, p := range points {
 			if p.Value > point.Value {
 				point.Value = p.Value
 			}
 		}
-	case AGGREGATION_MIN:
+	case AggregationMin:
 		point.Value = points[0].Value
 		for _, p := range points {
 			if p.Value < point.Value {
