@@ -158,6 +158,56 @@ func TestArchiveHeader(t *testing.T) {
 	}
 }
 
+func TestFetch(t *testing.T) {
+	filename := tempFileName()
+	defer os.Remove(filename)
+
+	const (
+		step    = 60
+		nPoints = 100
+	)
+
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(step, nPoints)}, CreateOptions{})
+	if err != nil {
+		t.Fatal("failed to create database:", err)
+	}
+	defer func() {
+		if err := w.Close(); err != nil {
+			t.Fatal("failed to close database:", err)
+		}
+	}()
+
+	points := make([]Point, nPoints)
+	now := time.Now()
+	for i := 0; i < nPoints; i++ {
+		points[i] = NewPoint(now.Add(-time.Duration(nPoints-1-i)*time.Minute), float64(i))
+	}
+	err = w.UpdateMany(points)
+	if err != nil {
+		t.Fatal("failed to update points:", err)
+	}
+
+	_, fetchedPoints, err := w.FetchUntil(1, 0)
+	if err == nil {
+		t.Fatal("no error from nonsensical fetch, fetched", fetchedPoints)
+	}
+
+	_, fetchedPoints, err = w.Fetch(0)
+	if err != nil {
+		t.Fatal("error fetching points:", err)
+	}
+	if len(fetchedPoints) != nPoints {
+		t.Fatalf("got %d points, want %d", len(fetchedPoints), nPoints)
+	}
+	for i := range fetchedPoints {
+		point := points[i]
+		point.Timestamp = quantizeTimestamp(point.Timestamp, step)
+		if fetchedPoints[i] != point {
+			t.Errorf("point %d: got %v, want %v", i, fetchedPoints[i], point)
+		}
+	}
+}
+
 func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
