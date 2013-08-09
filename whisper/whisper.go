@@ -500,6 +500,7 @@ func (w *Whisper) FetchUntil(from, until uint32) (interval Interval, points []Po
 	}
 	if from > until {
 		err = errors.New("from time is not less than until time")
+		return
 	}
 	if until > now {
 		until = now
