@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/kisielk/whisper-go/whisper"
+	"log"
 	"os"
 )
 
@@ -23,6 +24,7 @@ func main() {
 	defer db.Close()
 	dumpHeader(db)
 	dumpArchiveHeaders(db)
+	dumpArchives(db)
 }
 
 func dumpHeader(w *whisper.Whisper) {
@@ -40,6 +42,20 @@ func dumpArchiveHeaders(w *whisper.Whisper) {
 		fmt.Println("  seconds per point", archive.SecondsPerPoint)
 		fmt.Println("  points", archive.Points)
 		fmt.Println("  retention", archive.Retention())
+		fmt.Println("  size", archive.Size())
 		fmt.Println()
+	}
+}
+
+func dumpArchives(w *whisper.Whisper) {
+	for i := range w.Header.Archives {
+		fmt.Println("Archive", i, "data:")
+		points, err := w.DumpArchive(i)
+		if err != nil {
+			log.Fatalln("failed to read archive:", err)
+		}
+		for n, point := range points {
+			fmt.Printf("%d: %d, %10.35g\n", n, point.Timestamp, point.Value)
+		}
 	}
 }

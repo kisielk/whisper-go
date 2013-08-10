@@ -50,13 +50,13 @@ func (a ArchiveInfo) Retention() uint32 {
 }
 
 // Calculates the size of the archive in bytes
-func (a ArchiveInfo) size() uint32 {
+func (a ArchiveInfo) Size() uint32 {
 	return a.Points * pointSize
 }
 
 // Calculates byte offset of the last point in the archive
 func (a ArchiveInfo) end() uint32 {
-	return a.Offset + a.size()
+	return a.Offset + a.Size()
 }
 
 // The AggregationMethod type describes how values are aggregated from one Whisper archive to another.
@@ -383,6 +383,19 @@ func (w *Whisper) Close() error {
 	return w.file.Close()
 }
 
+func (w *Whisper) DumpArchive(n int) ([]Point, error) {
+	if n >= len(w.Header.Archives) {
+		return nil, fmt.Errorf("database contains only %d archives", len(w.Header.Archives))
+	} else if n < 0 {
+		return nil, fmt.Errorf("archive index must be greater than 0")
+	}
+
+	info := w.Header.Archives[n]
+	points := make([]Point, int(info.Points))
+	err := w.readPoints(info.Offset, points)
+	return points, err
+}
+
 // Update writes a single datapoint to the whisper database
 func (w *Whisper) Update(point Point) error {
 	now := uint32(time.Now().Unix())
@@ -631,7 +644,7 @@ func (w *Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveI
 	// The realtive offset of the first high res point
 	relativeFirstOffset := higherFirstOffset - higher.Offset
 	// The relative offset of the last high res point
-	relativeLastOffset := (relativeFirstOffset + higherPointsSize) % higher.size()
+	relativeLastOffset := (relativeFirstOffset + higherPointsSize) % higher.Size()
 
 	// The actual offset of the last high res point
 	higherLastOffset := relativeLastOffset + higher.Offset
@@ -785,7 +798,7 @@ func (w *Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uin
 		timeDistance := timestamp - basePoint.Timestamp
 		pointDistance := timeDistance / archive.SecondsPerPoint
 		byteDistance := pointDistance * pointSize
-		offset = archive.Offset + (byteDistance % archive.size())
+		offset = archive.Offset + (byteDistance % archive.Size())
 	}
 	return
 }
