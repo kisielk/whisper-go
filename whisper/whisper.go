@@ -39,43 +39,28 @@ type ArchiveInfo struct {
 	Points          uint32 // The number of data points
 }
 
-// NewArchiveInfo returns a new ArchiveInfo with a zero offset
+// NewArchiveInfo returns a new ArchiveInfo with a zero offset.
 func NewArchiveInfo(secondsPerPoint, points uint32) ArchiveInfo {
 	return ArchiveInfo{SecondsPerPoint: secondsPerPoint, Points: points}
 }
 
-// Retention returns the retention period of the archive in seconds
+// Retention is the retention period of the archive in seconds.
 func (a ArchiveInfo) Retention() uint32 {
 	return a.SecondsPerPoint * a.Points
 }
 
-// Calculates the size of the archive in bytes
+// Size is the size of the archive in bytes.
 func (a ArchiveInfo) Size() uint32 {
 	return a.Points * pointSize
 }
 
-// Calculates byte offset of the last point in the archive
+// end is the byte offset of the last point in the archive.
 func (a ArchiveInfo) end() uint32 {
 	return a.Offset + a.Size()
 }
 
 // The AggregationMethod type describes how values are aggregated from one Whisper archive to another.
 type AggregationMethod uint32
-
-// Valid aggregation methods
-const (
-	AggregationUnknown AggregationMethod = 0 // Unknown aggregation method
-	AggregationAverage AggregationMethod = 1 // Aggregate using averaging
-	AggregationSum     AggregationMethod = 2 // Aggregate using sum
-	AggregationLast    AggregationMethod = 3 // Aggregate using the last value
-	AggregationMax     AggregationMethod = 4 // Aggregate using the maximum value
-	AggregationMin     AggregationMethod = 5 // Aggregate using the minimum value
-)
-
-const (
-	DefaultXFilesFactor      = 0.5
-	DefaultAggregationMethod = AggregationAverage
-)
 
 func (m AggregationMethod) String() (s string) {
 	switch m {
@@ -94,6 +79,21 @@ func (m AggregationMethod) String() (s string) {
 	}
 	return
 }
+
+// Valid aggregation methods
+const (
+	AggregationUnknown AggregationMethod = 0 // Unknown aggregation method
+	AggregationAverage AggregationMethod = 1 // Aggregate using averaging
+	AggregationSum     AggregationMethod = 2 // Aggregate using sum
+	AggregationLast    AggregationMethod = 3 // Aggregate using the last value
+	AggregationMax     AggregationMethod = 4 // Aggregate using the maximum value
+	AggregationMin     AggregationMethod = 5 // Aggregate using the minimum value
+)
+
+const (
+	DefaultXFilesFactor      = 0.5
+	DefaultAggregationMethod = AggregationAverage
+)
 
 // Header contains all the metadata about a whisper database.
 type Header struct {
@@ -145,8 +145,6 @@ type Whisper struct {
 	file   *os.File
 }
 
-// Unexported members
-
 // type for sorting a list of ArchiveInfo by the SecondsPerPoint field
 type bySecondsPerPoint []ArchiveInfo
 
@@ -178,28 +176,13 @@ var (
 // a regular expression matching a precision string such as 120y
 var precisionRegexp = regexp.MustCompile("^(\\d+)([smhdwy]?)")
 
-// Read the header of a whisper database
+// readHeader attempts to read the header of a Whisper database.
 func readHeader(buf io.ReadSeeker) (header Header, err error) {
-	currentPos, err := buf.Seek(0, 1)
-	if err != nil {
-		return
-	}
-	defer func() {
-		// Try to return to the original position when we exit
-		_, e := buf.Seek(currentPos, 0)
-		if e != nil {
-			err = e
-		}
-		return
-	}()
-
-	// Start at the beginning of the file
 	_, err = buf.Seek(0, 0)
 	if err != nil {
 		return
 	}
 
-	// Read metadata
 	var metadata Metadata
 	err = binary.Read(buf, binary.BigEndian, &metadata)
 	if err != nil {
@@ -207,7 +190,6 @@ func readHeader(buf io.ReadSeeker) (header Header, err error) {
 	}
 	header.Metadata = metadata
 
-	// Read archive info
 	archives := make([]ArchiveInfo, metadata.ArchiveCount)
 	for i := uint32(0); i < metadata.ArchiveCount; i++ {
 		err = binary.Read(buf, binary.BigEndian, &archives[i])
@@ -230,7 +212,7 @@ var (
 
 /*
 
-Validates a list of ArchiveInfos
+validateArchiveList validates a list of ArchiveInfos.
 
 The list must:
 
@@ -245,7 +227,7 @@ The list must:
 5. Each archive must have at least enough points to consolidate to the next archive
 
 */
-func ValidateArchiveList(archives []ArchiveInfo) error {
+func validateArchiveList(archives []ArchiveInfo) error {
 	sort.Sort(bySecondsPerPoint(archives))
 
 	// 1.
@@ -284,7 +266,7 @@ func ValidateArchiveList(archives []ArchiveInfo) error {
 
 }
 
-// CreateOptions sets the option
+// CreateOptions sets the options used to create a new archive.
 type CreateOptions struct {
 	// The XFiles factor to use. DefaultXFilesFactor if not set.
 	XFilesFactor float32
@@ -301,8 +283,12 @@ func headerSize(n int) uint32 {
 	return metadataSize + (archiveInfoSize * uint32(n))
 }
 
-// Create a new database at the given filepath.
+// Create attempts to create a new database at the given filepath.
 func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whisper, error) {
+	if err := validateArchiveList(archives); err != nil {
+		return nil, err
+	}
+
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return nil, err
@@ -369,7 +355,8 @@ func openWhisper(f *os.File) (*Whisper, error) {
 	return &Whisper{Header: header, file: f}, nil
 }
 
-// Open opens an existing whisper database
+// Open opens an existing whisper database.
+// It returns an error if the file does not exist or is not a valid whisper archive.
 func Open(path string) (*Whisper, error) {
 	file, err := os.OpenFile(path, os.O_RDWR, 0666)
 	if err != nil {
@@ -698,7 +685,7 @@ func (w *Whisper) SetAggregationMethod(m AggregationMethod) error {
 	return nil
 }
 
-// Read a single point from an offset in the database
+// readPoint reads a single point from an offset in the database.
 func (w *Whisper) readPoint(offset uint32) (point Point, err error) {
 	points := make([]Point, 1)
 	err = w.readPoints(offset, points)
@@ -706,7 +693,7 @@ func (w *Whisper) readPoint(offset uint32) (point Point, err error) {
 	return
 }
 
-// Read a slice of points from an offset in the database
+// readPoints fills a slice of points with data from an offset in the database.
 func (w *Whisper) readPoints(offset uint32, points []Point) error {
 	_, err := w.file.Seek(int64(offset), 0)
 	if err != nil {
@@ -715,7 +702,7 @@ func (w *Whisper) readPoints(offset uint32, points []Point) error {
 	return binary.Read(w.file, binary.BigEndian, points)
 }
 
-// write writes points at an offset.
+// writePoints writes a slice of points at an offset in the database.
 func (w *Whisper) writePoints(offset uint32, points []Point) error {
 	if _, err := w.file.Seek(int64(offset), 0); err != nil {
 		return err
@@ -745,8 +732,9 @@ func (w *Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, end
 	return
 }
 
-// Write a points to an archive in the order given
-// The offset is determined by the first point
+// writeArchive write points to an archive.
+// It assumes the points are in chronological order and at intervals matching the archive's resolution.
+// The offset is determined by the timestamp of the first point.
 func (w *Whisper) writeArchive(archive ArchiveInfo, points ...Point) error {
 	nPoints := uint32(len(points))
 
@@ -775,7 +763,7 @@ func (w *Whisper) writeArchive(archive ArchiveInfo, points ...Point) error {
 	return err
 }
 
-// Get the offset of a timestamp within an archive
+// pointOffset returns the offset of a timestamp within an archive
 func (w *Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint32, err error) {
 	basePoint, err := w.readPoint(archive.Offset)
 	if err != nil {

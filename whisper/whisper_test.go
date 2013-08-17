@@ -99,7 +99,7 @@ func TestParseArchiveInfo(t *testing.T) {
 func TestWhisperAggregation(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
-	w, err := Create(filename, []ArchiveInfo{}, CreateOptions{AggregationMethod: AggregationMin})
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 60)}, CreateOptions{AggregationMethod: AggregationMin})
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -273,7 +273,7 @@ func TestValidateArchiveList(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		if err := ValidateArchiveList(test.Archives); err != test.Error {
+		if err := validateArchiveList(test.Archives); err != test.Error {
 			t.Errorf("%d: got: %v, want: %v", i, err, test.Error)
 		}
 	}
