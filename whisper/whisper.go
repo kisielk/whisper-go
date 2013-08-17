@@ -731,9 +731,6 @@ func (w *Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, end
 		// The selection is in the middle of the archive. eg: --####---
 		points = make([]Point, (endOffset-startOffset)/pointSize)
 		err = w.readPoints(startOffset, points)
-		if err != nil {
-			return
-		}
 	} else {
 		// The selection wraps over the end of the archive. eg: ##----###
 		numEndPoints := (archiveEnd - startOffset) / pointSize
@@ -745,9 +742,6 @@ func (w *Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, end
 			return
 		}
 		err = w.readPoints(archiveStart, points[numEndPoints:])
-		if err != nil {
-			return
-		}
 	}
 	return
 }
