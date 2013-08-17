@@ -843,9 +843,10 @@ func ParseArchiveInfo(archiveString string) (ArchiveInfo, error) {
 	return a, nil
 }
 
-func quantizeArchive(points archive, resolution uint32) archive {
+// quantizeArchive returns a copy of arc with all the points quantized to the given resolution.
+func quantizeArchive(arc archive, resolution uint32) archive {
 	result := archive{}
-	for _, point := range points {
+	for _, point := range arc {
 		result = append(result, Point{quantize(point.Timestamp, resolution), point.Value})
 	}
 	return result
