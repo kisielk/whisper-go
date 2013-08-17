@@ -761,6 +761,8 @@ func (w *Whisper) writeArchive(archive ArchiveInfo, points ...Point) error {
 		return err
 	}
 
+	fmt.Println(archive, points)
+
 	maxPointsFromOffset := (archive.end() - offset) / pointSize
 	if nPoints > maxPointsFromOffset {
 		// Points span the beginning and end of the archive, eg: ##----###
@@ -782,20 +784,20 @@ func (w *Whisper) writeArchive(archive ArchiveInfo, points ...Point) error {
 
 // Get the offset of a timestamp within an archive
 func (w *Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uint32, err error) {
-	basePoint, err := w.readPoint(0)
+	basePoint, err := w.readPoint(archive.Offset)
 	if err != nil {
-		return
+		return 0, err
 	}
+
 	if basePoint.Timestamp == 0 {
 		// The archive has never been written, this will be the new base point
-		offset = archive.Offset
-	} else {
-		timeDistance := timestamp - basePoint.Timestamp
-		pointDistance := timeDistance / archive.SecondsPerPoint
-		byteDistance := pointDistance * pointSize
-		offset = archive.Offset + (byteDistance % archive.Size())
+		return archive.Offset, nil
 	}
-	return
+
+	timeDistance := timestamp - basePoint.Timestamp
+	pointDistance := timeDistance / archive.SecondsPerPoint
+	byteDistance := pointDistance * pointSize
+	return archive.Offset + (byteDistance % archive.Size()), nil
 }
 
 /*
