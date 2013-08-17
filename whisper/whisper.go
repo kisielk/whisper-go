@@ -403,7 +403,7 @@ func (w *Whisper) Update(point Point) error {
 	}
 
 	// Normalize the point's timestamp to the current archive's precision and write the point
-	point.Timestamp = point.Timestamp - (point.Timestamp % currentArchive.SecondsPerPoint)
+	point.Timestamp = quantize(point.Timestamp, currentArchive.SecondsPerPoint)
 	if err := w.writeArchive(currentArchive, point); err != nil {
 		return err
 	}
@@ -519,13 +519,13 @@ func (w *Whisper) FetchUntil(from, until uint32) (interval Interval, points []Po
 	}
 
 	step := archive.SecondsPerPoint
-	fromTimestamp := quantizeTimestamp(from, step) + step
+	fromTimestamp := quantize(from, step) + step
 	fromOffset, err := w.pointOffset(archive, fromTimestamp)
 	if err != nil {
 		return
 	}
 
-	untilTimestamp := quantizeTimestamp(until, step) + step
+	untilTimestamp := quantize(until, step) + step
 	untilOffset, err := w.pointOffset(archive, untilTimestamp)
 	if err != nil {
 		return
@@ -614,9 +614,7 @@ PropagateLoop:
 }
 
 func (w *Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveInfo) (result bool, err error) {
-	// The start of the lower resolution archive interval.
-	// Essentially a downsampling of the higher resolution timestamp.
-	lowerIntervalStart := timestamp - (timestamp % lower.SecondsPerPoint)
+	lowerIntervalStart := quantize(timestamp, lower.SecondsPerPoint)
 
 	// The offset of the first point in the higher resolution data to be propagated down
 	higherFirstOffset, err := w.pointOffset(higher, lowerIntervalStart)
@@ -848,12 +846,13 @@ func ParseArchiveInfo(archiveString string) (ArchiveInfo, error) {
 func quantizeArchive(points archive, resolution uint32) archive {
 	result := archive{}
 	for _, point := range points {
-		result = append(result, Point{quantizeTimestamp(point.Timestamp, resolution), point.Value})
+		result = append(result, Point{quantize(point.Timestamp, resolution), point.Value})
 	}
 	return result
 }
 
-func quantizeTimestamp(timestamp uint32, resolution uint32) (quantized uint32) {
+// quantize returns the timestamp quantized to the resloution.
+func quantize(timestamp, resolution uint32) uint32 {
 	return timestamp - (timestamp % resolution)
 }
 
