@@ -766,20 +766,16 @@ func (w *Whisper) writeArchive(archive ArchiveInfo, points ...Point) error {
 	maxPointsFromOffset := (archive.end() - offset) / pointSize
 	if nPoints > maxPointsFromOffset {
 		// Points span the beginning and end of the archive, eg: ##----###
-		if err := w.writePoints(offset, points[:maxPointsFromOffset]); err != nil {
+		if err = w.writePoints(offset, points[:maxPointsFromOffset]); err != nil {
 			return err
 		}
-		if err := w.writePoints(archive.Offset, points[maxPointsFromOffset:]); err != nil {
-			return err
-		}
+		err = w.writePoints(archive.Offset, points[maxPointsFromOffset:])
 	} else {
 		// Points are in the middle of the archive, eg: --####---
-		if err := w.writePoints(offset, points); err != nil {
-			return err
-		}
+		err = w.writePoints(offset, points)
 	}
 
-	return nil
+	return err
 }
 
 // Get the offset of a timestamp within an archive
