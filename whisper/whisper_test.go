@@ -41,7 +41,7 @@ func TestQuantizePoint(t *testing.T) {
 	}
 
 	for i, tt := range pointTests {
-		q := quantizeTimestamp(tt.in, tt.resolution)
+		q := quantize(tt.in, tt.resolution)
 		if q != tt.out {
 			t.Errorf("%d. quantizePoint(%q, %q) => %q, want %q", i, tt.in, tt.resolution, q, tt.out)
 		}
@@ -201,13 +201,14 @@ func TestFetch(t *testing.T) {
 	}
 	for i := range fetchedPoints {
 		point := points[i]
-		point.Timestamp = quantizeTimestamp(point.Timestamp, step)
+		point.Timestamp = quantize(point.Timestamp, step)
 		if fetchedPoints[i] != point {
 			t.Errorf("point %d: got %v, want %v", i, fetchedPoints[i], point)
 		}
 	}
 }
 
+// TestMaxRetention tests the behaviour of an archive's maximum retenetion.
 func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
