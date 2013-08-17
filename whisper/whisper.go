@@ -417,7 +417,7 @@ func (w *Whisper) Update(point Point) error {
 
 	// Normalize the point's timestamp to the current archive's precision and write the point
 	point.Timestamp = point.Timestamp - (point.Timestamp % currentArchive.SecondsPerPoint)
-	if err := w.writePoints(currentArchive, point); err != nil {
+	if err := w.writeArchive(currentArchive, point); err != nil {
 		return err
 	}
 
@@ -443,9 +443,11 @@ func (w *Whisper) Update(point Point) error {
 func (w *Whisper) UpdateMany(points []Point) error {
 	now := uint32(time.Now().Unix())
 
+	// TODO: Sort points first
+
 	archiveIndex := 0
-	var currentArchive *ArchiveInfo
-	currentArchive = &w.Header.Archives[archiveIndex]
+	currentArchive := &w.Header.Archives[archiveIndex]
+
 	var currentPoints archive
 
 PointLoop:
@@ -454,7 +456,7 @@ PointLoop:
 
 		for currentArchive.Retention() < age {
 			if len(currentPoints) > 0 {
-				sort.Sort(reverseArchive{currentPoints})
+				sort.Sort(currentPoints)
 				if err := w.archiveUpdateMany(*currentArchive, currentPoints); err != nil {
 					return err
 				}
@@ -476,7 +478,7 @@ PointLoop:
 	}
 
 	if currentArchive != nil && len(currentPoints) > 0 {
-		sort.Sort(reverseArchive{currentPoints})
+		sort.Sort(currentPoints)
 		if err := w.archiveUpdateMany(*currentArchive, currentPoints); err != nil {
 			return err
 		}
@@ -588,7 +590,7 @@ func (w *Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points archive) (er
 	}
 
 	for _, archive := range archives {
-		err = w.writePoints(archiveInfo, archive.points...)
+		err = w.writeArchive(archiveInfo, archive.points...)
 		if err != nil {
 			return err
 		}
@@ -675,7 +677,7 @@ func (w *Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveI
 	}
 	aggregatePoint.Timestamp = lowerIntervalStart
 
-	err = w.writePoints(lower, aggregatePoint)
+	err = w.writeArchive(lower, aggregatePoint)
 
 	return true, nil
 
@@ -713,6 +715,15 @@ func (w *Whisper) readPoints(offset uint32, points []Point) error {
 	return binary.Read(w.file, binary.BigEndian, points)
 }
 
+// write writes points at an offset.
+func (w *Whisper) writePoints(offset uint32, points []Point) error {
+	fmt.Println(offset, points)
+	if _, err := w.file.Seek(int64(offset), 0); err != nil {
+		return err
+	}
+	return binary.Write(w.file, binary.BigEndian, points)
+}
+
 func (w *Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, endOffset uint32) (points []Point, err error) {
 	archiveStart := archive.Offset
 	archiveEnd := archive.end()
@@ -743,7 +754,7 @@ func (w *Whisper) readPointsBetweenOffsets(archive ArchiveInfo, startOffset, end
 
 // Write a points to an archive in the order given
 // The offset is determined by the first point
-func (w *Whisper) writePoints(archive ArchiveInfo, points ...Point) error {
+func (w *Whisper) writeArchive(archive ArchiveInfo, points ...Point) error {
 	nPoints := uint32(len(points))
 
 	// Sanity check
@@ -751,33 +762,23 @@ func (w *Whisper) writePoints(archive ArchiveInfo, points ...Point) error {
 		return fmt.Errorf("archive can store at most %d points, %d supplied", archive.Points, nPoints)
 	}
 
-	// Get the offset of the first point
 	offset, err := w.pointOffset(archive, points[0].Timestamp)
 	if err != nil {
-		return err
-	}
-
-	if _, err := w.file.Seek(int64(offset), 0); err != nil {
 		return err
 	}
 
 	maxPointsFromOffset := (archive.end() - offset) / pointSize
 	if nPoints > maxPointsFromOffset {
 		// Points span the beginning and end of the archive, eg: ##----###
-		if err := binary.Write(w.file, binary.BigEndian, points[:maxPointsFromOffset]); err != nil {
+		if err := w.writePoints(offset, points[:maxPointsFromOffset]); err != nil {
 			return err
 		}
-
-		if _, err := w.file.Seek(int64(archive.Offset), 0); err != nil {
-			return err
-		}
-
-		if err := binary.Write(w.file, binary.BigEndian, points[maxPointsFromOffset:]); err != nil {
+		if err := w.writePoints(archive.Offset, points[maxPointsFromOffset:]); err != nil {
 			return err
 		}
 	} else {
 		// Points are in the middle of the archive, eg: --####---
-		if err := binary.Write(w.file, binary.BigEndian, points); err != nil {
+		if err := w.writePoints(offset, points); err != nil {
 			return err
 		}
 	}
