@@ -717,7 +717,6 @@ func (w *Whisper) readPoints(offset uint32, points []Point) error {
 
 // write writes points at an offset.
 func (w *Whisper) writePoints(offset uint32, points []Point) error {
-	fmt.Println(offset, points)
 	if _, err := w.file.Seek(int64(offset), 0); err != nil {
 		return err
 	}
@@ -760,8 +759,6 @@ func (w *Whisper) writeArchive(archive ArchiveInfo, points ...Point) error {
 	if err != nil {
 		return err
 	}
-
-	fmt.Println(archive, points)
 
 	maxPointsFromOffset := (archive.end() - offset) / pointSize
 	if nPoints > maxPointsFromOffset {
