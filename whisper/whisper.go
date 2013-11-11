@@ -142,7 +142,7 @@ func (i Interval) Duration() time.Duration {
 // Whisper represents a handle to a whisper database.
 type Whisper struct {
 	Header Header
-	file   *os.File
+	file   io.ReadWriteSeeker
 }
 
 // type for sorting a list of ArchiveInfo by the SecondsPerPoint field
@@ -347,7 +347,7 @@ func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whispe
 	return openWhisper(file)
 }
 
-func openWhisper(f *os.File) (*Whisper, error) {
+func openWhisper(f io.ReadWriteSeeker) (*Whisper, error) {
 	header, err := readHeader(f)
 	if err != nil {
 		return nil, err
@@ -367,7 +367,10 @@ func Open(path string) (*Whisper, error) {
 
 // Close closes a whisper database.
 func (w *Whisper) Close() error {
-	return w.file.Close()
+	if closer, ok := w.file.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
 }
 
 func (w *Whisper) DumpArchive(n int) ([]Point, error) {
