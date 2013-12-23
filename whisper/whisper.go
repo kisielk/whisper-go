@@ -358,7 +358,16 @@ func openWhisper(f io.ReadWriteSeeker) (*Whisper, error) {
 // Open opens an existing whisper database.
 // It returns an error if the file does not exist or is not a valid whisper archive.
 func Open(path string) (*Whisper, error) {
-	file, err := os.OpenFile(path, os.O_RDWR, 0666)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return openWhisper(file)
+}
+
+// OpenFile opens an existing whisper database specifying OS flags and permissions
+func OpenFile(path string, flags int, perm os.FileMode) (*Whisper, error) {
+	file, err := os.OpenFile(path, flags, perm)
 	if err != nil {
 		return nil, err
 	}
