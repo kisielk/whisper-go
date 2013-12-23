@@ -344,10 +344,11 @@ func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whispe
 		file.Write(buf[:remaining])
 	}
 
-	return openWhisper(file)
+	return OpenWhisper(file)
 }
 
-func openWhisper(f io.ReadWriteSeeker) (*Whisper, error) {
+// OpenWhisper opens an existing Whisper database from the given ReadWriteSeeker.
+func OpenWhisper(f io.ReadWriteSeeker) (*Whisper, error) {
 	header, err := readHeader(f)
 	if err != nil {
 		return nil, err
@@ -362,7 +363,7 @@ func Open(path string) (*Whisper, error) {
 	if err != nil {
 		return nil, err
 	}
-	return openWhisper(file)
+	return OpenWhisper(file)
 }
 
 // Close closes a whisper database.
