@@ -278,6 +278,9 @@ type CreateOptions struct {
 	Sparse bool
 }
 
+func DefaultCreateOptions() CreateOptions {
+	return CreateOptions{DefaultXFilesFactor, DefaultAggregationMethod, false}
+}
 // headerSize calculates the size of a header with n archives
 func headerSize(n int) uint32 {
 	return metadataSize + (archiveInfoSize * uint32(n))
@@ -292,13 +295,6 @@ func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whispe
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return nil, err
-	}
-
-	if options.XFilesFactor == 0.0 {
-		options.XFilesFactor = DefaultXFilesFactor
-	}
-	if options.AggregationMethod == 0 {
-		options.AggregationMethod = DefaultAggregationMethod
 	}
 
 	oldest := uint32(0)

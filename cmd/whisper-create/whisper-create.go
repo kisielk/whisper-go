@@ -81,7 +81,10 @@ func main() {
 		archives = append(archives, archive)
 	}
 
-	_, err := whisper.Create(path, archives, whisper.CreateOptions{XFilesFactor: float32(xFilesFactor), AggregationMethod: method})
+	options := whisper.DefaultCreateOptions()
+	options.XFilesFactor = float32(xFilesFactor)
+	options.AggregationMethod = method
+	_, err := whisper.Create(path, archives, options)
 	if err != nil {
 		log.Fatal(err)
 	}

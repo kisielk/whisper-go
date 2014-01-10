@@ -99,7 +99,9 @@ func TestParseArchiveInfo(t *testing.T) {
 func TestWhisperAggregation(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
-	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 60)}, CreateOptions{AggregationMethod: AggregationMin})
+	options := DefaultCreateOptions()
+	options.AggregationMethod = AggregationMin
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 60)}, options)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -119,7 +121,7 @@ func TestArchiveHeader(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
 
-	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, CreateOptions{})
+	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, DefaultCreateOptions())
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -167,7 +169,7 @@ func TestFetch(t *testing.T) {
 		nPoints = 100
 	)
 
-	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(step, nPoints)}, CreateOptions{})
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(step, nPoints)}, DefaultCreateOptions())
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -213,7 +215,7 @@ func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
 
-	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, CreateOptions{})
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, DefaultCreateOptions())
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -238,7 +240,7 @@ func TestCreateTwice(t *testing.T) {
 	archiveInfos := []ArchiveInfo{NewArchiveInfo(60, 10)}
 	defer os.Remove(filename)
 
-	w, err := Create(filename, archiveInfos, CreateOptions{})
+	w, err := Create(filename, archiveInfos, DefaultCreateOptions())
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -246,7 +248,7 @@ func TestCreateTwice(t *testing.T) {
 		t.Fatal("failed to close database:", err)
 	}
 
-	_, err = Create(filename, archiveInfos, CreateOptions{})
+	_, err = Create(filename, archiveInfos, DefaultCreateOptions())
 	if err == nil {
 		t.Fatal("no error when attempting to overwrite database")
 	}
