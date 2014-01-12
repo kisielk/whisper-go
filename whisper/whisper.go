@@ -278,6 +278,9 @@ type CreateOptions struct {
 	Sparse bool
 }
 
+func DefaultCreateOptions() CreateOptions {
+	return CreateOptions{DefaultXFilesFactor, DefaultAggregationMethod, false}
+}
 // headerSize calculates the size of a header with n archives
 func headerSize(n int) uint32 {
 	return metadataSize + (archiveInfoSize * uint32(n))
@@ -292,13 +295,6 @@ func Create(path string, archives []ArchiveInfo, options CreateOptions) (*Whispe
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return nil, err
-	}
-
-	if options.XFilesFactor == 0.0 {
-		options.XFilesFactor = DefaultXFilesFactor
-	}
-	if options.AggregationMethod == 0 {
-		options.AggregationMethod = DefaultAggregationMethod
 	}
 
 	oldest := uint32(0)
@@ -535,7 +531,19 @@ func (w *Whisper) FetchUntil(from, until uint32) (interval Interval, points []Po
 		return
 	}
 
-	points, err = w.readPointsBetweenOffsets(archive, fromOffset, untilOffset)
+	rawPoints, err := w.readPointsBetweenOffsets(archive, fromOffset, untilOffset)
+	if err != nil {
+		return
+	}
+
+	currentInterval := fromTimestamp
+	for _, p := range rawPoints {
+		if p.Timestamp == currentInterval {
+			points = append(points, p)
+		}
+		currentInterval += step
+	}
+
 	interval = Interval{fromTimestamp, untilTimestamp, step}
 	return
 }
@@ -591,7 +599,7 @@ func (w *Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points archive) (er
 
 PropagateLoop:
 	for _, info := range w.Header.Archives {
-		if info.SecondsPerPoint < archiveInfo.SecondsPerPoint {
+		if info.SecondsPerPoint <= archiveInfo.SecondsPerPoint {
 			continue
 		}
 
@@ -647,7 +655,7 @@ func (w *Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveI
 
 	var neighborPoints []Point
 	currentInterval := lowerIntervalStart
-	for i := 0; i < len(points); i += 2 {
+	for i := 0; i < len(points); i++ {
 		if points[i].Timestamp == currentInterval {
 			neighborPoints = append(neighborPoints, points[i])
 		}
@@ -777,10 +785,16 @@ func (w *Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uin
 		return archive.Offset, nil
 	}
 
-	timeDistance := timestamp - basePoint.Timestamp
+	totalArchivePeriod := archive.Points * archive.SecondsPerPoint
+	var timeDistance uint32
+	if timestamp >= basePoint.Timestamp {
+		timeDistance = (timestamp - basePoint.Timestamp) % totalArchivePeriod
+	} else {
+		timeDistance = totalArchivePeriod - ((basePoint.Timestamp - timestamp) % totalArchivePeriod)
+	}
 	pointDistance := timeDistance / archive.SecondsPerPoint
 	byteDistance := pointDistance * pointSize
-	return archive.Offset + (byteDistance % archive.Size()), nil
+	return archive.Offset + byteDistance, nil
 }
 
 /*

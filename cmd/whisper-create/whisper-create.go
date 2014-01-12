@@ -9,10 +9,12 @@ import (
 	"strings"
 )
 
-type aggregationFlag whisper.AggregationMethod
+type aggregationFlag struct {
+	whisper.AggregationMethod
+}
 
 func (f *aggregationFlag) String() string {
-	return f.String()
+	return f.AggregationMethod.String()
 }
 
 func (f *aggregationFlag) Set(s string) error {
@@ -32,11 +34,11 @@ func (f *aggregationFlag) Set(s string) error {
 	default:
 		m = whisper.AggregationUnknown
 	}
-	*f = aggregationFlag(m)
+	f.AggregationMethod = m
 	return nil
 }
 
-var aggregationMethod = aggregationFlag(whisper.AggregationAverage)
+var aggregationMethod = aggregationFlag{whisper.AggregationAverage}
 var xFilesFactor float64
 
 func main() {
@@ -47,7 +49,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	method := whisper.AggregationMethod(aggregationMethod)
+	method := aggregationMethod.AggregationMethod
 
 	log.SetFlags(0)
 
@@ -79,7 +81,10 @@ func main() {
 		archives = append(archives, archive)
 	}
 
-	_, err := whisper.Create(path, archives, whisper.CreateOptions{XFilesFactor: float32(xFilesFactor), AggregationMethod: method})
+	options := whisper.DefaultCreateOptions()
+	options.XFilesFactor = float32(xFilesFactor)
+	options.AggregationMethod = method
+	_, err := whisper.Create(path, archives, options)
 	if err != nil {
 		log.Fatal(err)
 	}

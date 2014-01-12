@@ -99,7 +99,9 @@ func TestParseArchiveInfo(t *testing.T) {
 func TestWhisperAggregation(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
-	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 60)}, CreateOptions{AggregationMethod: AggregationMin})
+	options := DefaultCreateOptions()
+	options.AggregationMethod = AggregationMin
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 60)}, options)
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -119,7 +121,7 @@ func TestArchiveHeader(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
 
-	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, CreateOptions{})
+	w, err := Create(filename, []ArchiveInfo{ainfo(1, 60), ainfo(60, 60)}, DefaultCreateOptions())
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -167,7 +169,7 @@ func TestFetch(t *testing.T) {
 		nPoints = 100
 	)
 
-	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(step, nPoints)}, CreateOptions{})
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(step, nPoints)}, DefaultCreateOptions())
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -213,7 +215,7 @@ func TestMaxRetention(t *testing.T) {
 	filename := tempFileName()
 	defer os.Remove(filename)
 
-	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, CreateOptions{})
+	w, err := Create(filename, []ArchiveInfo{NewArchiveInfo(60, 10)}, DefaultCreateOptions())
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -238,7 +240,7 @@ func TestCreateTwice(t *testing.T) {
 	archiveInfos := []ArchiveInfo{NewArchiveInfo(60, 10)}
 	defer os.Remove(filename)
 
-	w, err := Create(filename, archiveInfos, CreateOptions{})
+	w, err := Create(filename, archiveInfos, DefaultCreateOptions())
 	if err != nil {
 		t.Fatal("failed to create database:", err)
 	}
@@ -246,7 +248,7 @@ func TestCreateTwice(t *testing.T) {
 		t.Fatal("failed to close database:", err)
 	}
 
-	_, err = Create(filename, archiveInfos, CreateOptions{})
+	_, err = Create(filename, archiveInfos, DefaultCreateOptions())
 	if err == nil {
 		t.Fatal("no error when attempting to overwrite database")
 	}
@@ -277,5 +279,57 @@ func TestValidateArchiveList(t *testing.T) {
 		if err := validateArchiveList(test.Archives); err != test.Error {
 			t.Errorf("%d: got: %v, want: %v", i, err, test.Error)
 		}
+	}
+}
+
+// Test that values are aggregated correctly when rolling up into lower archive
+func TestArchiveRollup(t *testing.T) {
+	filename := tempFileName()
+	defer os.Remove(filename)
+
+	options := DefaultCreateOptions()
+	options.AggregationMethod = AggregationSum
+	ai1, err := ParseArchiveInfo("5s:1m")
+	ai2, err := ParseArchiveInfo("10s:2m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := Create(filename, []ArchiveInfo{ai1, ai2}, options)
+	if err != nil {
+		t.Fatal("failed to create database:", err)
+	}
+	defer func() {
+		if err := w.Close(); err != nil {
+			t.Fatal("failed to close database:", err)
+		}
+	}()
+
+	nPoints := 5
+	points := make([]Point, nPoints)
+	now := time.Now()
+	for i := 0; i < nPoints; i++ {
+		points[i] = NewPoint(now.Add(-time.Duration((nPoints-i)*5)*time.Second), float64(1))
+	}
+	err = w.UpdateMany(points)
+	if err != nil {
+		t.Fatal("failed to update points:", err)
+	}
+
+	oneCount := 0
+	twoCount := 0
+
+	dump, err := w.DumpArchive(1)
+	if err != nil {
+		t.Fatal("failed to read archive:", err)
+	}
+
+	for _, point := range dump {
+		switch point.Value {
+		case 1: oneCount++
+		case 2: twoCount++
+		}
+	}
+	if oneCount != 1 || twoCount != 2 {
+		t.Fatal("Archive rollup unexpected values")
 	}
 }
