@@ -531,7 +531,19 @@ func (w *Whisper) FetchUntil(from, until uint32) (interval Interval, points []Po
 		return
 	}
 
-	points, err = w.readPointsBetweenOffsets(archive, fromOffset, untilOffset)
+	rawPoints, err := w.readPointsBetweenOffsets(archive, fromOffset, untilOffset)
+	if err != nil {
+		return
+	}
+
+	currentInterval := fromTimestamp
+	for _, p := range rawPoints {
+		if p.Timestamp == currentInterval {
+			points = append(points, p)
+		}
+		currentInterval += step
+	}
+
 	interval = Interval{fromTimestamp, untilTimestamp, step}
 	return
 }
