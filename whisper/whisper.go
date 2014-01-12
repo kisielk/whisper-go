@@ -587,7 +587,7 @@ func (w *Whisper) archiveUpdateMany(archiveInfo ArchiveInfo, points archive) (er
 
 PropagateLoop:
 	for _, info := range w.Header.Archives {
-		if info.SecondsPerPoint < archiveInfo.SecondsPerPoint {
+		if info.SecondsPerPoint <= archiveInfo.SecondsPerPoint {
 			continue
 		}
 
@@ -643,7 +643,7 @@ func (w *Whisper) propagate(timestamp uint32, higher ArchiveInfo, lower ArchiveI
 
 	var neighborPoints []Point
 	currentInterval := lowerIntervalStart
-	for i := 0; i < len(points); i += 2 {
+	for i := 0; i < len(points); i++ {
 		if points[i].Timestamp == currentInterval {
 			neighborPoints = append(neighborPoints, points[i])
 		}
@@ -773,10 +773,16 @@ func (w *Whisper) pointOffset(archive ArchiveInfo, timestamp uint32) (offset uin
 		return archive.Offset, nil
 	}
 
-	timeDistance := timestamp - basePoint.Timestamp
+	totalArchivePeriod := archive.Points * archive.SecondsPerPoint
+	var timeDistance uint32
+	if timestamp >= basePoint.Timestamp {
+		timeDistance = (timestamp - basePoint.Timestamp) % totalArchivePeriod
+	} else {
+		timeDistance = totalArchivePeriod - ((basePoint.Timestamp - timestamp) % totalArchivePeriod)
+	}
 	pointDistance := timeDistance / archive.SecondsPerPoint
 	byteDistance := pointDistance * pointSize
-	return archive.Offset + (byteDistance % archive.Size()), nil
+	return archive.Offset + byteDistance, nil
 }
 
 /*
